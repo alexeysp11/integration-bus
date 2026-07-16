@@ -1,0 +1,16 @@
+.vs
+.vscode
+
+.github
+
+bin 
+obj
+publish
+
+*.csproj.user
+
+examplelocal
+
+*.db
+*.db-shm
+*.db-wal

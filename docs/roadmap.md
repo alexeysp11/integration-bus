@@ -7,7 +7,7 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🚀 Stage 1: Core .NET Architecture & Asynchronous Saga (MVP)
 
 ### 📌 Issue #1: Base Infrastructure and Gateway Skeleton
-*   **Git Branch:** `feature/issue-1-infra-skeleton`
+*   **Git Branch:** `feature/issue-1`
 *   **Description:** Establish the foundational infrastructure and project layout for the `integration-bus` platform. The goal is to spin up the core message broker and database containers, initialize the initial .NET 9 Web API gateway project, and verify its automated integration with Apache Kafka via MassTransit on startup.
 *   **Todo List:**
     - [ ] Create the root repository directory structure (`src/`, `deploy/`).
@@ -21,7 +21,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - `GatewayApi` boots up and successfully connects to the Kafka broker, automatically declaring system topologies/topics without crashing.
 
 ### 📌 Issue #2: Project Skeletons for Saga Participants
-*   **Git Branch:** `feature/issue-2-service-skeletons`
+*   **Git Branch:** `feature/issue-2`
 *   **Description:** Following the **Database-per-Service** architectural pattern, we need to isolate the execution contexts for each distributed transaction step. This task involves creating three independent .NET 9 worker services and provisioning dedicated, isolated database containers for each context inside the Docker environment.
 *   **Todo List:**
     - [ ] Initialize the `AccountBalance.Service` project (.NET 9 Worker / Web API).
@@ -35,7 +35,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - The updated docker-compose environment spins up segregated storages, preventing direct database-level coupling between contexts.
 
 ### 📌 Issue #3: Asynchronous Saga Orchestration via MassTransit Courier
-*   **Git Branch:** `feature/issue-3-saga-orchestration`
+*   **Git Branch:** `feature/issue-3`
 *   **Description:** Implement the end-to-end asynchronous distributed transaction flow using the Saga Orchestration pattern. The `GatewayApi` must intercept incoming HTTP requests, construct an immutable Routing Slip, and dispatch it to the bus. Each microservice must execute its corresponding activity step, commit states locally, and provide compensation logic for automated rollbacks.
 *   **Todo List:**
     - [ ] Implement `HoldMoneyActivity` and its corresponding compensation (funds reversal) inside `AccountBalance.Service`.
@@ -53,7 +53,7 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🧪 Stage 2: Reliability Engineering & Integration Testing
 
 ### 📌 Issue #4: Integration Testing for Saga Compensations
-*   **Git Branch:** `test/issue-4-saga-integration-tests`
+*   **Git Branch:** `test/issue-4`
 *   **Description:** Add a comprehensive integration test suite using WebApplicationFactory and the MassTransit test harness to ensure that infrastructure and business validation errors trigger the correct automated rollback behaviors.
 *   **Todo List:**
     - [ ] Setup an integration test project using `xUnit` and `FluentAssertions`.
@@ -64,7 +64,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - Compensation logic is fully asserted without relying on actual external Docker containers (using local test harness).
 
 ### 📌 Issue #5: Introduce Distributed Locks and Rules Engine
-*   **Git Branch:** `feature/issue-5-resilience-logic`
+*   **Git Branch:** `feature/issue-5`
 *   **Description:** Protect the Balance service from concurrency issues and race conditions under heavy load using Redis distributed locks, and migrate compliance validations into an expandable declarative JSON structure.
 *   **Todo List:**
     - [ ] Add a `Redis` instance into the `deploy/docker-compose.yml` file.
@@ -79,7 +79,7 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 📊 Stage 3: Real-Time Analytical Contour (DWH) & Data Masking
 
 ### 📌 Issue #6: Setup Real-Time Analytics Pipeline with Debezium and ClickHouse
-*   **Git Branch:** `feature/issue-6-cdc-dwh-analytics`
+*   **Git Branch:** `feature/issue-6`
 *   **Description:** Build an isolated real-time analytical layer. Capture changes from multiple isolated Postgres databases via WAL logs using Change Data Capture (CDC) without affecting production transactional performance.
 *   **Todo List:**
     - [ ] Add `Debezium (Kafka Connect)`, `ClickHouse`, and `Metabase` containers to `deploy/docker-compose.yml`.
@@ -91,7 +91,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - Metabase successfully connects to ClickHouse pre-aggregated data marts to render financial reports.
 
 ### 📌 Issue #7: Prod-to-Test Data Masking Pipeline
-*   **Git Branch:** `feature/issue-7-data-anonymization`
+*   **Git Branch:** `feature/issue-7`
 *   **Description:** Create a secure pipeline that replicates production database transaction streams into a dedicated Test DB while anonymizing sensitive PII data deterministically using salted hashes.
 *   **Todo List:**
     - [ ] Add a target `PostgreSQL-Test` instance to the infrastructure topology.
@@ -105,7 +105,7 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🌐 Stage 4: Cloud-Native Migration (Kubernetes Deployment)
 
 ### 📌 Issue #8: Kubernetes and Helm Migration
-*   **Git Branch:** `feature/issue-8-kubernetes-migration`
+*   **Git Branch:** `feature/issue-8`
 *   **Description:** Transition away from Docker Compose and prepare the entire platform topology for running inside a scalable, cloud-native orchestration environment.
 *   **Todo List:**
     - [ ] Write optimized, multi-stage `Dockerfile`s for all .NET microservices.
@@ -119,7 +119,7 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🌋 Stage 5: High-Load Simulation & Chaos Engineering
 
 ### 📌 Issue #9: Chaos Engineering and Load Testing with k6
-*   **Git Branch:** `chaos/issue-9-load-and-resiliency-testing`
+*   **Git Branch:** `test/issue-9`
 *   **Description:** Execute the ultimate architectural validation. Bombard the Kubernetes cluster with heavy load and simulate infrastructure crash scenarios to prove system-wide data consistency.
 *   **Todo List:**
     - [ ] Write a javascript load testing script using `k6` to simulate thousands of continuous ledger transactions.

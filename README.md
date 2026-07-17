@@ -22,44 +22,55 @@ Instead of reinventing the wheel, this project focuses on high-load infrastructu
 ## 🧬 Architectural Topology
 
 ```text
-       [ External Client / k6 Load Test ]
-                       │
-                       ▼
-         [ NGINX (SSL / Rate Limiting) ]
-                       │
-                       ▼
-       [ API Gateway (YARP HTTP Proxy) ]
-                       │
-       ┌───────────────┴───────────────┐
-       ▼ (gRPC Token Validation)       ▼ (HTTP Forwarding)
-[ Keycloak Auth ]            [ Web API Ledger Gateway ]
-                                       │
-                                       ▼ (Start Distributed Saga)
-                        [ Apache Kafka (Events Broker) ]
-                                       ▲
-                                       │ (Orchestration Steps Flow)
-                        [ MassTransit Saga Orchestrator ]
-                                       │
-       ┌───────────────────────────────┼───────────────────────────────┐
-       ▼ (Step 1)                      ▼ (Step 2)                      ▼ (Step 3)
-[ Account Balance Service ]     [ Compliance Service ]          [ Core Ledger Service ]
-  └─► [ Redis + Postgres DB ]     └─► [ Postgres Comp DB ]        └─► [ Postgres Prod DB ]
-             │                                 │                               │
-             ▼                                 ▼                               ▼
-     [ Debezium CDC 1 ]               [ Debezium CDC 2 ]               [ Debezium CDC 3 ]
-             │                                 │                               │
-             └────────────────────────┬────────┴───────────────────────────────┘
-                                      │ (Real-time Transaction Log Streaming)
-                                      ▼
-                        [ Kafka Analytical Pipeline ]
-                                      │
-                                      ▼
-                        [ ClickHouse OLAP (Staging) ]
-                                      │
-                                      ├───(Materialized Views / Joins)───► [ ClickHouse (Final Data Marts) ]
-                                      │                                             ▲
-                                      ▼ (Anonymization & Masking)                   │
-                        [ PostgreSQL Test DB ]                         [ Metabase Dashboard Reports ]
+                     [ External Client / k6 Load Test ]
+                                     │
+                                     ▼
+                       [ NGINX (SSL / Rate Limiting) ]
+                                     │
+                                     ▼
+                     [ API Gateway (YARP HTTP Proxy) ]
+                                     │
+     ┌───────────────────────────────┴───────────────────────────────┐
+     ▼ (gRPC Token Validation)                                       ▼ (HTTP Forwarding)
+[ Keycloak Auth ]                                          [ Web API Ledger Gateway ]
+                                                                     │
+                                                                     ▼ (Start Distributed Saga)
+                                                      [ Apache Kafka (Events Broker) ]
+                                                                     ▲
+                                                                     │ (Orchestration Steps Flow)
+                                                      [ MassTransit Saga Orchestrator ]
+                                                                     │
+     ┌───────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┐
+     ▼ (Step 1)                                                      ▼ (Step 2)                                                      ▼ (Step 3)
+[ Account Balance Service ]                                   [ Compliance Service ]                                          [ Core Ledger Service ]
+  └─► [ Postgres Balance DB ]                                   └─► [ Postgres Compliance DB ]                                  └─► [ Postgres Prod Ledger DB ]
+            │              │                                              │              │                                              │              │
+            │              │ (WAL Capture)                                │              │ (WAL Capture)                                │              │ (WAL Capture)
+            │              └────────────────┐                             │              └────────────────┐                             │              └────────────────┐
+            ▼ (Incremental Pull)            │                             ▼ (Incremental Pull)            │                             ▼ (Incremental Pull)            │
+┌───────────────────────────────────────┐   │                 ┌───────────────────────────────────────┐   │                 ┌───────────────────────────────────────┐   │
+│   [ Custom .NET 9 ETL Worker ]        │   │                 │   [ Custom .NET 9 ETL Worker ]        │   │                 │   [ Custom .NET 9 ETL Worker ]        │   │
+└───────────────────┬───────────────────┘   │                 └───────────────────┬───────────────────┘   │                 └───────────────────┬───────────────────┘   │
+                    │                       │                                     │                       │                                     │                       │
+                    ▼ (Bulk Insert)         │                                     ▼ (Bulk Insert)         │                                     ▼ (Bulk Insert)         │
+        [ ClickHouse OLAP Cubes ]           │                         [ ClickHouse OLAP Cubes ]           │                         [ ClickHouse OLAP Cubes ]           │
+                    │                       │                                     │                       │                                     │                       │
+                    ▼                       │                                     ▼                       │                                     ▼                       │
+         [ Metabase Dashboards ]            │                          [ Metabase Dashboards ]            │                          [ Metabase Dashboards ]            │
+                                            │                                                             │                                                             │
+                                            ▼                                                             ▼                                                             ▼
+                               ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+                               │                                                 [ Debezium CDC Cluster ]                                                               │
+                               └────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────┘
+                                                                                            │
+                                                                                            ▼ (Masked Stream)
+                                                                                [ Kafka Security Topics ]
+                                                                                            │
+                                                                                            ▼
+                                                                             [ Isolated PostgreSQL Test DBs ]
+                                                                               - balance_test_db
+                                                                               - compliance_test_db
+                                                                               - ledger_test_db
 ```
 
 ---

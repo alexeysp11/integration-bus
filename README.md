@@ -21,6 +21,12 @@ Instead of reinventing the wheel, this project focuses on high-load infrastructu
 
 ## 🧬 Architectural Topology
 
+The system topology is split into three decoupled operational layers: Core Transactional Runtime, Real-Time Analytics Pipeline, and Secure Data Anonymization.
+
+### 1. Core Transactional Runtime (Saga Flow)
+
+This layer handles the lifecycle of synchronous incoming requests and orchestrates the distributed financial transaction across microservices using isolated databases (Database-per-Service).
+
 ```text
                      [ External Client / k6 Load Test ]
                                      │
@@ -30,47 +36,65 @@ Instead of reinventing the wheel, this project focuses on high-load infrastructu
                                      ▼
                      [ API Gateway (YARP HTTP Proxy) ]
                                      │
-     ┌───────────────────────────────┴───────────────────────────────┐
-     ▼ (gRPC Token Validation)                                       ▼ (HTTP Forwarding)
-[ Keycloak Auth ]                                          [ Web API Ledger Gateway ]
-                                                                     │
-                                                                     ▼ (Start Distributed Saga)
-                                                      [ Apache Kafka (Events Broker) ]
-                                                                     ▲
-                                                                     │ (Orchestration Steps Flow)
-                                                      [ MassTransit Saga Orchestrator ]
-                                                                     │
-     ┌───────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┐
-     ▼ (Step 1)                                                      ▼ (Step 2)                                                      ▼ (Step 3)
-[ Account Balance Service ]                                   [ Compliance Service ]                                          [ Core Ledger Service ]
-  └─► [ Postgres Balance DB ]                                   └─► [ Postgres Compliance DB ]                                  └─► [ Postgres Prod Ledger DB ]
-            │              │                                              │              │                                              │              │
-            │              │ (WAL Capture)                                │              │ (WAL Capture)                                │              │ (WAL Capture)
-            │              └────────────────┐                             │              └────────────────┐                             │              └────────────────┐
-            ▼ (Incremental Pull)            │                             ▼ (Incremental Pull)            │                             ▼ (Incremental Pull)            │
-┌───────────────────────────────────────┐   │                 ┌───────────────────────────────────────┐   │                 ┌───────────────────────────────────────┐   │
-│   [ Custom .NET 9 ETL Worker ]        │   │                 │   [ Custom .NET 9 ETL Worker ]        │   │                 │   [ Custom .NET 9 ETL Worker ]        │   │
-└───────────────────┬───────────────────┘   │                 └───────────────────┬───────────────────┘   │                 └───────────────────┬───────────────────┘   │
-                    │                       │                                     │                       │                                     │                       │
-                    ▼ (Bulk Insert)         │                                     ▼ (Bulk Insert)         │                                     ▼ (Bulk Insert)         │
-        [ ClickHouse OLAP Cubes ]           │                         [ ClickHouse OLAP Cubes ]           │                         [ ClickHouse OLAP Cubes ]           │
-                    │                       │                                     │                       │                                     │                       │
-                    ▼                       │                                     ▼                       │                                     ▼                       │
-         [ Metabase Dashboards ]            │                          [ Metabase Dashboards ]            │                          [ Metabase Dashboards ]            │
-                                            │                                                             │                                                             │
-                                            ▼                                                             ▼                                                             ▼
-                               ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-                               │                                                 [ Debezium CDC Cluster ]                                                               │
-                               └────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────┘
-                                                                                            │
-                                                                                            ▼ (Masked Stream)
-                                                                                [ Kafka Security Topics ]
-                                                                                            │
-                                                                                            ▼
-                                                                             [ Isolated PostgreSQL Test DBs ]
-                                                                               - balance_test_db
-                                                                               - compliance_test_db
-                                                                               - ledger_test_db
+     ┌───────────────────────────────┴────────────────┐
+     ▼ (gRPC Token Validation)                        ▼ (HTTP Forwarding)
+[ Keycloak Auth ]                           [ Web API Ledger Gateway ]
+                                                      │
+                                                      ▼ (Start Distributed Saga)
+                                       [ Apache Kafka (Events Broker) ]
+                                                      ▲
+                                                      │ (Orchestration Steps Flow)
+                                       [ MassTransit Saga Orchestrator ]
+                                                      │
+     ┌────────────────────────────────────────────────┼──────────────────────────────────────────┐
+     ▼ (Step 1)                                       ▼ (Step 2)                                 ▼ (Step 3)
+[ Account Balance Service ]                         [ Compliance Service ]                     [ Core Ledger Service ]
+  └─► [ Postgres Balance DB ]                         └─► [ Postgres Compliance DB ]             └─► [ Postgres Prod Ledger DB ]
+```
+
+### 2. Real-Time Analytical Contour (OLAP)
+
+*Note: This pipeline is executed symmetrically for all three transactional databases (`Balance DB`, `Compliance DB`, and `Ledger DB`). The diagram below illustrates the flow for a single database instance.*
+
+```text
+ [ Postgres App DB ] (One of: Balance / Compliance / Ledger DB)
+         │
+         │ (Incremental Pull via IAsyncEnumerator)
+         ▼
+ ┌───────────────────────────────────────────────────────────────────┐
+ │               [ Custom .NET 9 ETL Ingestion Worker ]              │
+ │ - High-Watermark checkpoint tracking (WHERE id > max_id)          │
+ │ - In-Memory Batching & Schema Validation (System.Threading)       │
+ └─────────────────────────────────┬─────────────────────────────────┘
+                                   │
+                                   ▼ (Bulk Inserts in Patches)
+                       [ ClickHouse OLAP Cubes ]
+                                   │
+                                   ▼
+                     [ Metabase Dashboard Reports ]
+```
+
+### 3. Secure Data Anonymization Pipeline (Prod-to-Test)
+
+*Note: To protect production PII and banking secrets, this CDC pipeline replicates all transactional databases into mirrored, fully obfuscated environments for development and QA teams.*
+
+```text
+ [ Postgres Prod DB ] (One of: Balance / Compliance / Ledger DB)
+         │
+         │ (Asynchronous WAL Log Capture with zero OLTP CPU overhead)
+         ▼
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                     [ Debezium CDC Cluster ]                      │
+ │ - Single Message Transformations (SMT) for on-the-fly masking     │
+ │ - Deterministic salted hashing of Account IDs and PII data        │
+ └─────────────────────────────────┬─────────────────────────────────┘
+                                   │
+                                   ▼ (Masked Obfuscated Stream)
+                       [ Kafka Security Topics ]
+                                   │
+                                   ▼ (Row-by-Row Ingestion)
+                     [ Isolated PostgreSQL Test DB ] 
+                       (balance_test / compliance_test / ledger_test)
 ```
 
 ---

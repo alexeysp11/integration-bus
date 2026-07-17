@@ -28,28 +28,28 @@ The system topology is split into three decoupled operational layers: Core Trans
 This layer handles the lifecycle of synchronous incoming requests and orchestrates the distributed financial transaction across microservices using isolated databases (Database-per-Service).
 
 ```text
-                     [ External Client / k6 Load Test ]
-                                     │
-                                     ▼
-                       [ NGINX (SSL / Rate Limiting) ]
-                                     │
-                                     ▼
-                     [ API Gateway (YARP HTTP Proxy) ]
-                                     │
-     ┌───────────────────────────────┴────────────────┐
-     ▼ (gRPC Token Validation)                        ▼ (HTTP Forwarding)
-[ Keycloak Auth ]                           [ Web API Ledger Gateway ]
-                                                      │
-                                                      ▼ (Start Distributed Saga)
-                                       [ Apache Kafka (Events Broker) ]
-                                                      ▲
-                                                      │ (Orchestration Steps Flow)
-                                       [ MassTransit Saga Orchestrator ]
-                                                      │
-     ┌────────────────────────────────────────────────┼──────────────────────────────────────────┐
-     ▼ (Step 1)                                       ▼ (Step 2)                                 ▼ (Step 3)
-[ Account Balance Service ]                         [ Compliance Service ]                     [ Core Ledger Service ]
-  └─► [ Postgres Balance DB ]                         └─► [ Postgres Compliance DB ]             └─► [ Postgres Prod Ledger DB ]
+       [ External Client / k6 Load Test ]
+                       │
+                       ▼
+         [ NGINX (SSL / Rate Limiting) ]
+                       │
+                       ▼
+       [ API Gateway (YARP HTTP Proxy) ]
+                       │
+       ┌───────────────┴───────────────┐
+       ▼ (gRPC Token Validation)       ▼ (HTTP Forwarding)
+[ Keycloak Auth ]            [ Web API Ledger Gateway ]
+                                       │
+                                       ▼ (Start Distributed Saga)
+                        [ Apache Kafka (Events Broker) ]
+                                       ▲
+                                       │ (Orchestration Steps Flow)
+                        [ MassTransit Saga Orchestrator ]
+                                       │
+       ┌───────────────────────────────┼───────────────────────────────┐
+       ▼ (Step 1)                      ▼ (Step 2)                      ▼ (Step 3)
+[ Account Balance Service ]     [ Compliance Service ]          [ Core Ledger Service ]
+  └─► [ Redis + Postgres DB ]     └─► [ Postgres Comp DB ]        └─► [ Postgres Ledger DB ]
 ```
 
 ### 2. Real-Time Analytical Contour (OLAP)

@@ -4,7 +4,7 @@
 > This repository represents a live, step-by-step architectural evolution. Features documented below are being rolled out incrementally according to the project roadmap.
 
 ### 📊 Implementation Progress
-- [ ] **Stage 1: Core Architecture & Async Saga** — 🔄 *In Progress (Working on Issue #1)*
+- [ ] **Stage 1: Core Architecture & Async Saga** — 🔄 *In Progress (Working on Issue #2)*
 - [ ] **Stage 2: Reliability & Integration Testing** — ⏳ *Pending*
 - [ ] **Stage 3: Real-Time Analytics (DWH) & Masking** — ⏳ *Pending*
 - [ ] **Stage 4: Cloud-Native Migration (Kubernetes)** — ⏳ *Pending*

@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  integration-bus-kafka:
+    image: apache/kafka:latest
+    container_name: integration-bus-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # JVM memory settings
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+      
+      # Roles (KRaft mode without Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@integration-bus-kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # Setting up networks
+      # 9092 - for external clients (localhost)
+      # 9094 - for internal clients inside Docker (service name)
+      KAFKA_LISTENERS: PLAINTEXT://:9094,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://integration-bus-kafka:9094,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+  integration-bus-kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: integration-bus-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-cluster
+      # Сonnect via the internal name and port
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: integration-bus-kafka:9094
+    depends_on:
+      - integration-bus-kafka
+
+  integration-bus-redis:
+    image: redis:alpine
+    container_name: integration-bus-redis
+    command: redis-server --requirepass secret_password_123 --appendonly yes
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "secret_password_123", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Web-GUI management tool via official GitHub Container Registry
+  integration-bus-redis-commander:
+    container_name: integration-bus-redis-commander
+    hostname: redis-commander
+    image: ghcr.io/joeferner/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=local:integration-bus-redis:6379:0:secret_password_123
+    ports:
+      - "8082:8081"
+    depends_on:
+      integration-bus-redis:
+        condition: service_healthy
+
+  integration-bus-db:
+    image: postgres
+    container_name: integration-bus-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "54321:5432"

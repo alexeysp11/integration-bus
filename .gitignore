@@ -1,0 +1,38 @@
+## == Microsoft Visual Studio & Rider Global Configurations ==
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.slnLaunch.user
+
+## == .NET Core Tools & Build Outputs ==
+bin/
+obj/
+publish/
+[Dd]ebug/
+[Rr]elease/
+*.deps.json
+*.runtimeconfig.dev.json
+
+## == Package Management (NuGet & Rider local caches) ==
+*.nuget.props
+*.nuget.targets
+.nuget/
+
+## == Operating System Garbage (Mac & Windows artifacts) ==
+.DS_Store
+Thumbs.db
+
+## == Infrastructure & Data Layer Secrets / Storage ==
+# Local SQLite or Docker persistent engine dumps (if accidentally left)
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Exclude local environment secrets and user secrets configuration blocks
+.idea/
+appsettings.Local.json
+*.usersecrets

@@ -11,15 +11,15 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Description:** Establish the foundational infrastructure and service layouts for the `integration-bus` platform. The goal is to spin up the core message broker, database, and cache containers via Docker, initialize a pure API Gateway using YARP (Yet Another Reverse Proxy) for request forwarding, and deploy the baseline `ProcessingService` skeleton with verified MassTransit/Kafka connectivity on startup.
 *   **Todo List:**
     - [x] Create the root repository directory structure (`src/`, `tests/`, `docs/`, `infrastructure/`).
-    - [ ] Spin up the local infrastructure stack (`kafka`, `kafka-ui`, `redis`, `postgres`) using `docker-compose.yml` (without physical volumes for clean test environments).
+    - [x] Spin up the local infrastructure stack (`kafka`, `kafka-ui`, `redis`, `postgres`) using `docker-compose.yml` (without physical volumes for clean test environments).
     - [x] Create an initialization script (`infrastructure/postgres/init.sql`) to provision isolated databases for all future microservices (`gateway`, `balance`, `compliance`, `ledger`).
-    - [ ] Initialize the `IntegrationBus.GatewayApi` project using .NET 9 and configure it as a lightweight YARP reverse proxy redirecting `/api/ledger/**` traffic to the processing backend.
-    - [ ] Initialize the `IntegrationBus.ProcessingService` project (.NET 9 Web API) configured on port `5100`.
-    - [ ] Install open-source Apache-2.0 licensed MassTransit packages (`v8.5.10`) into `ProcessingService` and establish a startup connection to the local Kafka broker (`localhost:9092`).
+    - [x] Initialize the `IntegrationBus.Gateway.Api` project using .NET 9 and configure it as a lightweight YARP reverse proxy redirecting `/api/ledger/**` traffic to the processing backend.
+    - [x] Initialize the `IntegrationBus.Processing.Api` project (.NET 9 Web API) configured on port `5201`.
+    - [x] Install open-source Apache-2.0 licensed MassTransit packages (`v8.5.10`) into `ProcessingService` and establish a startup connection to the local Kafka broker (`localhost:9092`).
 *   **Definition of Done:**
     - Infrastructure stack starts smoothly with `docker compose up -d` and database footprints are automatically initialized.
-    - `IntegrationBus.GatewayApi` compiles, boots up, and successfully forwards a dummy HTTP POST request to `IntegrationBus.ProcessingService`.
-    - `IntegrationBus.ProcessingService` successfully validates its connection to the Kafka broker on startup without throwing exceptions or crashing.
+    - `IntegrationBus.Gateway.Api` compiles, boots up, and successfully forwards a dummy HTTP POST request to `IntegrationBus.Processing.Api`.
+    - `IntegrationBus.Processing.Api` successfully validates its connection to the Kafka broker on startup without throwing exceptions or crashing.
 
 ### 📌 Issue #2: Project Skeletons for Saga Participants
 *   **Git Branch:** `feature/issue-2`
@@ -41,7 +41,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - [ ] Implement a stateful Saga State Machine class within `SagaOrchestrator` to track financial execution states (`Started`, `FundsHeld`, `ComplianceApproved`, `Completed`, `Failed`).
     - [ ] Code the state consumers: `HoldMoneyCommand` (with rollback compensation), `CheckComplianceCommand`, and `CommitLedgerCommand`.
     - [ ] Implement a nested **MassTransit Courier Routing Slip** inside `CoreLedger.Service` to handle `CommitLedgerCommand` via three sequential technical activities: `WriteAuditTrailActivity` (Postgres), `UpdateCacheActivity` (Redis), and `InvalidateDwhWatermarkActivity` (ETL marker).
-    - [ ] Update `IntegrationBus.ProcessingService` to publish the initial `StartTransactionCommand` to Kafka and immediately return `HTTP 202 Accepted` along with a unique `TransactionId` (GUID) to the caller.
+    - [ ] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionCommand` to Kafka and immediately return `HTTP 202 Accepted` along with a unique `TransactionId` (GUID) to the caller.
     - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `ProcessingService` that reads the current execution state from the database, allowing clients to track saga outcomes.
 *   **Definition of Done:**
     - Postman sending a POST transaction receives a superfast `202 Accepted` reply.

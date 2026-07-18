@@ -50,6 +50,14 @@ int[] codes =;
 // Mutate cache state inside Redis cluster
 ```
 
+### 📝 Ubiquitous XML Documentation & API Metadata
+
+* **Universal XML Documentation:** Professional XML documentation tags (`<summary>`, `<remarks>`, `<param>`, `<returns>`, `<exception>`) written strictly in English are **mandatory** for all public and internal API surfaces across the entire ecosystem. This rule applies globally regardless of the project type (including, but not limited to, Web API controllers, gRPC contracts, WPF/WinForms view-models, and foundational Class Libraries) to guide backend engineers via IDE IntelliSense.
+* **Explicit OpenAPI Metadata (Web API Specific):**
+    * **External API Layer (Native Annotations):** Web API endpoints must strictly utilize modern native .NET 9 metadata attributes (`[EndpointSummary]`, `[EndpointDescription]`) to drive the interactive Scalar UI documentation layout.
+    * **HTTP Schema Declaration:** Every Web API controller method must declare its exact contract outcomes explicitly using descriptive `[ProducesResponseType]` attributes to map precise success and failure boundaries.
+* **No Auto-Generated Boilerplate:** Avoid empty, meaningless, or auto-generated IDE documentation stubs. Documentation must clearly articulate the business domain intent, payload rules, validation constraints, and edge-case behaviors.
+
 ---
 
 ## 🧪 2. Automated Testing Ecosystem & Architecture

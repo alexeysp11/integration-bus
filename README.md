@@ -38,13 +38,13 @@ This layer handles the lifecycle of synchronous incoming requests and orchestrat
                        │
        ┌───────────────┴───────────────┐
        ▼ (gRPC Token Validation)       ▼ (HTTP Forwarding)
-[ Keycloak Auth ]            [ Web API Ledger Gateway ]
+[ Keycloak Auth ]                   [ WebAPI Processing Service ]
                                        │
                                        ▼ (Start Distributed Saga)
-                        [ Apache Kafka (Events Broker) ]
+                                    [ Apache Kafka (Events Broker) ]
                                        ▲
-                                       │ (Orchestration Steps Flow)
-                        [ MassTransit Saga Orchestrator ]
+                                       │ (Saga Orchestration Steps Flow)
+                                    [ MassTransit / Stateful Orchestrator ]
                                        │
        ┌───────────────────────────────┼───────────────────────────────┐
        ▼ (Step 1)                      ▼ (Step 2)                      ▼ (Step 3)

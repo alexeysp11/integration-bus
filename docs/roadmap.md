@@ -8,45 +8,46 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ### 📌 Issue #1: Base Infrastructure and Gateway Skeleton
 *   **Git Branch:** `feature/issue-1`
-*   **Description:** Establish the foundational infrastructure and project layout for the `integration-bus` platform. The goal is to spin up the core message broker and database containers, initialize the initial .NET 9 Web API gateway project, and verify its automated integration with Apache Kafka via MassTransit on startup.
+*   **Description:** Establish the foundational infrastructure and service layouts for the `integration-bus` platform. The goal is to spin up the core message broker, database, and cache containers via Docker, initialize a pure API Gateway using YARP (Yet Another Reverse Proxy) for request forwarding, and deploy the baseline `ProcessingService` skeleton with verified MassTransit/Kafka connectivity on startup.
 *   **Todo List:**
-    - [ ] Create the root repository directory structure (`src/`, `deploy/`).
-    - [ ] Initialize the `GatewayApi` project using .NET 9 Web API in the `src/GatewayApi/` folder.
-    - [ ] Install required NuGet packages (`MassTransit`, `MassTransit.Kafka`).
-    - [ ] Draft a minimal `deploy/docker-compose.yml` containing Apache Kafka (KRaft mode) and a single PostgreSQL instance.
-    - [ ] Implement the baseline bus initialization in `Program.cs` for `GatewayApi`, configuring the transport to connect to the local Kafka broker.
+    - [x] Create the root repository directory structure (`src/`, `tests/`, `docs/`, `infrastructure/`).
+    - [ ] Spin up the local infrastructure stack (`kafka`, `kafka-ui`, `redis`, `postgres`) using `docker-compose.yml` (without physical volumes for clean test environments).
+    - [x] Create an initialization script (`infrastructure/postgres/init.sql`) to provision isolated databases for all future microservices (`gateway`, `balance`, `compliance`, `ledger`).
+    - [ ] Initialize the `IntegrationBus.GatewayApi` project using .NET 9 and configure it as a lightweight YARP reverse proxy redirecting `/api/ledger/**` traffic to the processing backend.
+    - [ ] Initialize the `IntegrationBus.ProcessingService` project (.NET 9 Web API) configured on port `5100`.
+    - [ ] Install open-source Apache-2.0 licensed MassTransit packages (`v8.5.10`) into `ProcessingService` and establish a startup connection to the local Kafka broker (`localhost:9092`).
 *   **Definition of Done:**
-    - The project compiles successfully without errors or warnings.
-    - Running `docker-compose up -d` spins up the infrastructure layer smoothly.
-    - `GatewayApi` boots up and successfully connects to the Kafka broker, automatically declaring system topologies/topics without crashing.
+    - Infrastructure stack starts smoothly with `docker compose up -d` and database footprints are automatically initialized.
+    - `IntegrationBus.GatewayApi` compiles, boots up, and successfully forwards a dummy HTTP POST request to `IntegrationBus.ProcessingService`.
+    - `IntegrationBus.ProcessingService` successfully validates its connection to the Kafka broker on startup without throwing exceptions or crashing.
 
 ### 📌 Issue #2: Project Skeletons for Saga Participants
 *   **Git Branch:** `feature/issue-2`
-*   **Description:** Following the **Database-per-Service** architectural pattern, we need to isolate the execution contexts for each distributed transaction step. This task involves creating three independent .NET 9 worker services and provisioning dedicated, isolated database containers for each context inside the Docker environment.
+*   **Description:** Following the **Database-per-Service** architectural pattern, isolate the execution environments for each distributed transaction step. This task involves establishing three backend worker services (Balance, Compliance, Ledger) and initializing a central standalone `IntegrationBus.SagaOrchestrator` worker that will drive the stateful transaction machine.
 *   **Todo List:**
-    - [ ] Initialize the `AccountBalance.Service` project (.NET 9 Worker / Web API).
-    - [ ] Initialize the `Compliance.Service` project (.NET 9 Worker / Web API).
-    - [ ] Initialize the `CoreLedger.Service` project (.NET 9 Worker / Web API).
-    - [ ] Expand `deploy/docker-compose.yml` by adding three isolated PostgreSQL databases (`balance_db`, `compliance_db`, `ledger_db`).
-    - [ ] Configure baseline MassTransit and Kafka consumer connections across all three new services.
+    - [ ] Initialize `IntegrationBus.SagaOrchestrator` (.NET 9 Worker) responsible for handling MassTransit Saga State Machine logic.
+    - [ ] Initialize `IntegrationBus.AccountBalance.Service` (.NET 9 Worker) to process transaction funds reservation.
+    - [ ] Initialize `IntegrationBus.Compliance.Service` (.NET 9 Worker) to process declarative limit checks.
+    - [ ] Initialize `IntegrationBus.CoreLedger.Service` (.NET 9 Worker) to write the immutable final transaction records.
+    - [ ] Install MassTransit `v8.5.10` in all 4 new projects and configure baseline consumers subscribing to their respective Kafka topics.
 *   **Definition of Done:**
-    - Dedicated project directories and structures are established for all three Saga participants.
-    - Each service runs independently and has access exclusively to its own isolated database.
-    - The updated docker-compose environment spins up segregated storages, preventing direct database-level coupling between contexts.
+    - Dedicated directories, solutions, and internal dependency injection footprints are created for the orchestrator and all three saga steps.
+    - Each service runs independently as a standalone host and references only its dedicated infrastructure/database connections.
 
 ### 📌 Issue #3: Asynchronous Saga Orchestration via MassTransit Courier
 *   **Git Branch:** `feature/issue-3`
-*   **Description:** Implement the end-to-end asynchronous distributed transaction flow using the Saga Orchestration pattern. The `GatewayApi` must intercept incoming HTTP requests, construct an immutable Routing Slip, and dispatch it to the bus. Each microservice must execute its corresponding activity step, commit states locally, and provide compensation logic for automated rollbacks.
+*   **Description:** Implement the complete end-to-end asynchronous distributed transaction lifecycle using **MassTransit Saga State Machine** (Stateful Orchestration). The `ProcessingService` must ingest HTTP requests and fire a startup trigger. The `SagaOrchestrator` must coordinate step-by-step executions across the network. Additionally, add a transaction lookup mechanism for client status polling.
 *   **Todo List:**
-    - [ ] Implement `HoldMoneyActivity` and its corresponding compensation (funds reversal) inside `AccountBalance.Service`.
-    - [ ] Implement `ComplianceCheckActivity` (limits validation) inside `Compliance.Service`.
-    - [ ] Implement `CommitLedgerActivity` (immutable transaction log entry) inside `CoreLedger.Service`.
-    - [ ] Configure the controller in `GatewayApi` to accept the financial payload and assemble the `RoutingSlip` sequence.
-    - [ ] Verify the end-to-end happy path execution flow via MassTransit telemetry logs.
+    - [ ] Implement a stateful Saga State Machine class within `SagaOrchestrator` to track financial execution states (`Started`, `FundsHeld`, `ComplianceApproved`, `Completed`, `Failed`).
+    - [ ] Code the state consumers: `HoldMoneyCommand` (with rollback compensation), `CheckComplianceCommand`, and `CommitLedgerCommand`.
+    - [ ] Implement a nested **MassTransit Courier Routing Slip** inside `CoreLedger.Service` to handle `CommitLedgerCommand` via three sequential technical activities: `WriteAuditTrailActivity` (Postgres), `UpdateCacheActivity` (Redis), and `InvalidateDwhWatermarkActivity` (ETL marker).
+    - [ ] Update `IntegrationBus.ProcessingService` to publish the initial `StartTransactionCommand` to Kafka and immediately return `HTTP 202 Accepted` along with a unique `TransactionId` (GUID) to the caller.
+    - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `ProcessingService` that reads the current execution state from the database, allowing clients to track saga outcomes.
 *   **Definition of Done:**
-    - Incoming HTTP POST requests to the gateway successfully trigger the asynchronous Saga execution.
-    - Messages flow sequentially across microservices via dedicated Kafka topics.
-    - Upon successful execution, states are consistently updated across all three isolated databases (funds held -> compliance approved -> ledger committed).
+    - Postman sending a POST transaction receives a superfast `202 Accepted` reply.
+    - The distributed transaction executes flawlessly in the background across Kafka topics (Balance -> Compliance -> Ledger).
+    - The Ledger service successfully executes its internal technical steps via a `Routing Slip`; if a late activity fails (e.g., Redis timeout), it triggers automated local compensations.
+    - Making a GET request to the polling endpoint correctly reflects the completed financial or compensated failure state of the transaction.
 
 ---
 
@@ -67,7 +68,7 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Git Branch:** `feature/issue-5`
 *   **Description:** Protect the Balance service from concurrency issues and race conditions under heavy load using Redis distributed locks, and migrate compliance validations into an expandable declarative JSON structure.
 *   **Todo List:**
-    - [ ] Add a `Redis` instance into the `deploy/docker-compose.yml` file.
+    - [ ] Add a `Redis` instance into the `docker-compose.yml` file.
     - [ ] Integrate `RedLock.net` inside `HoldMoneyActivity` to lock account IDs mid-transaction.
     - [ ] Install `Microsoft.RulesEngine` NuGet package in `Compliance.Service` and load threshold definitions from a local JSON config.
 *   **Definition of Done:**
@@ -82,7 +83,7 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Git Branch:** `feature/issue-6`
 *   **Description:** Build an isolated real-time analytical layer. Capture changes from multiple isolated Postgres databases via WAL logs using Change Data Capture (CDC) without affecting production transactional performance.
 *   **Todo List:**
-    - [ ] Add `Debezium (Kafka Connect)`, `ClickHouse`, and `Metabase` containers to `deploy/docker-compose.yml`.
+    - [ ] Add `Debezium (Kafka Connect)`, `ClickHouse`, and `Metabase` containers to `docker-compose.yml`.
     - [ ] Register Postgres source connectors in Debezium for all three microservice databases.
     - [ ] Create raw Staging tables in ClickHouse linked to Kafka engine topics.
     - [ ] Implement ClickHouse `Materialized Views` to transform, join, and aggregate data streams into a flat analytic cube.

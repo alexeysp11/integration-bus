@@ -1,3 +1,5 @@
+using IntegrationBus.Contracts.Enums;
+
 namespace IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 
 /// <summary>
@@ -26,7 +28,7 @@ public sealed record StartTransactionSaga
     public decimal Amount { get; init; }
 
     /// <summary>
-    /// Gets the ISO 4217 currency code used for limits and audit.
+    /// Gets the currency type under which the record is registered.
     /// </summary>
-    public string Currency { get; init; } = string.Empty;
+    public Currency Currency { get; init; }
 }

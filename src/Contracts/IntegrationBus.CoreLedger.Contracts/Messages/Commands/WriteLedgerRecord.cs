@@ -1,4 +1,6 @@
-﻿namespace IntegrationBus.CoreLedger.Contracts.Messages.Commands;
+﻿using IntegrationBus.Contracts.Enums;
+
+namespace IntegrationBus.CoreLedger.Contracts.Messages.Commands;
 
 /// <summary>
 /// Command to commit the immutable final financial record.
@@ -28,5 +30,5 @@ public sealed record WriteLedgerRecord
     /// <summary>
     /// Gets the currency type under which the record is registered.
     /// </summary>
-    public string Currency { get; init; } = string.Empty;
+    public Currency Currency { get; init; }
 }

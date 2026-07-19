@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MassTransit" Version="8.5.10" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Contracts\IntegrationBus.AccountBalance.Contracts\IntegrationBus.AccountBalance.Contracts.csproj" />
+    <ProjectReference Include="..\..\Contracts\IntegrationBus.SagaOrchestrator.Contracts\IntegrationBus.SagaOrchestrator.Contracts.csproj" />
   </ItemGroup>
 </Project>

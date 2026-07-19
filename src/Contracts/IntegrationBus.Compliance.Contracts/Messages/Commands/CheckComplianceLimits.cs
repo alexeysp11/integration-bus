@@ -1,4 +1,6 @@
-﻿namespace IntegrationBus.Compliance.Contracts.Messages.Commands;
+﻿using IntegrationBus.Contracts.Enums;
+
+namespace IntegrationBus.Compliance.Contracts.Messages.Commands;
 
 /// <summary>
 /// Command to validate declarative transaction limits and regulatory rules.
@@ -26,7 +28,7 @@ public sealed record CheckComplianceLimits
     public decimal Amount { get; init; }
 
     /// <summary>
-    /// Gets the currency type used to evaluate boundary constraints.
+    /// Gets the currency type under which the record is registered.
     /// </summary>
-    public string Currency { get; init; } = string.Empty;
+    public Currency Currency { get; init; }
 }

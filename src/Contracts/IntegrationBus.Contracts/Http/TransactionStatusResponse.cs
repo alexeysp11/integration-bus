@@ -1,4 +1,6 @@
-﻿namespace IntegrationBus.Contracts.Http;
+﻿using IntegrationBus.Contracts.Enums;
+
+namespace IntegrationBus.Contracts.Http;
 
 /// <summary>
 /// Exposes the current execution state of a distributed transaction.
@@ -13,7 +15,7 @@ public sealed record TransactionStatusResponse
     /// <summary>
     /// Gets the current state machine status value.
     /// </summary>
-    public string Status { get; init; } = string.Empty;
+    public TransactionStatus Status { get; init; } = TransactionStatus.None;
 
     /// <summary>
     /// Gets the technical or business failure reason if the transaction failed.

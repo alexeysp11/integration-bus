@@ -1,4 +1,6 @@
-﻿namespace IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+﻿using IntegrationBus.AccountBalance.Contracts.Enums;
+
+namespace IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 
 /// <summary>
 /// Compensating command to reverse previous asset reservations.
@@ -21,7 +23,7 @@ public sealed record ReleaseAccountBalance
     public decimal Amount { get; init; }
 
     /// <summary>
-    /// Gets the contextual justification explaining why compensation was triggered.
+    /// Gets the strongly-typed business justification explaining why compensation was triggered.
     /// </summary>
-    public string Reason { get; init; } = string.Empty;
+    public ReleaseAccountBalanceReason Reason { get; init; } = ReleaseAccountBalanceReason.None;
 }

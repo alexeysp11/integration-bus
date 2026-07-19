@@ -1,4 +1,6 @@
-﻿namespace IntegrationBus.Contracts.Http;
+﻿using IntegrationBus.Contracts.Enums;
+
+namespace IntegrationBus.Contracts.Http;
 
 /// <summary>
 /// External client request to initialize a new distributed transaction.
@@ -26,7 +28,7 @@ public sealed record StartTransactionRequest
     public decimal Amount { get; init; }
 
     /// <summary>
-    /// Gets the ISO 4217 currency code.
+    /// Gets the currency type under which the record is registered.
     /// </summary>
-    public string Currency { get; init; } = string.Empty;
+    public Currency Currency { get; init; }
 }

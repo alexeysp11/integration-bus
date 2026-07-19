@@ -153,6 +153,25 @@ The primary technical challenge is to simulate severe infrastructure outages in 
 
 ---
 
+## ⚙️ Infrastructure & Local Environment Setup
+
+### 1. Database Initialization
+Ensure the centralized PostgreSQL container is fully initialized. The baseline schema footprints are established inside the logical partitions within the `integration-bus-db` container container instance.
+
+### 2. Manual Apache Kafka Topics Provisioning
+To align with high-performance production constraints and maintain boundary safety, automatic topic creation is disabled on the broker. You must provision the following required topics manually before spinning up the backend services.
+
+Open **Kafka UI** at `http://localhost:8080`, navigate to the **Topics** section, click **Add a Topic**, and create the following entities utilizing a baseline layout (1 Partition, Replication Factor 1):
+
+* `saga-transaction-start` — Ingests initialization trigger commands dispatched from the API layer.
+* `account-balance-hold` — Dispatched by the orchestrator to request asset locks inside the Balance context.
+* `account-balance-hold-passed` — Callback event signaling absolute success from the Balance worker.
+* `account-balance-hold-failed` — Callback event signaling validation or technical bounds violations from the Balance worker.
+* `compliance-limits-check` — Dispatched to trigger regulatory velocity verification steps.
+* `core-ledger-record-write` — Dispatched to trigger the immutable financial ledger audit trailing records.
+
+---
+
 ## 🚀 How to Run Locally
 
 ### Prerequisites

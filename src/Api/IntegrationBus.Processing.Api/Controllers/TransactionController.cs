@@ -1,4 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using IntegrationBus.Contracts.Http;
+using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using MassTransit;
+using Microsoft.AspNetCore.Mvc;
 
 namespace IntegrationBus.Processing.Api.Controllers;
 
@@ -7,7 +10,9 @@ namespace IntegrationBus.Processing.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/ledger/[controller]")]
-public sealed class TransactionController : ControllerBase
+public sealed class TransactionController(
+    ILogger<TransactionController> logger,
+    ITopicProducer<StartTransactionSaga> producer) : ControllerBase
 {
     /// <summary>
     /// Accepts a financial transaction payload and initiates an asynchronous stateful saga execution.
@@ -23,10 +28,25 @@ public sealed class TransactionController : ControllerBase
     [EndpointDescription("Accepts a financial transaction payload and initiates an asynchronous stateful saga execution.")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IActionResult CreateTransaction()
+    public async Task<IActionResult> CreateTransactionAsync([FromBody] StartTransactionRequest request, CancellationToken cancellationToken)
     {
-        // Generate a unique identifier for the asynchronous tracking flow
-        Guid transactionId = Guid.NewGuid();
+        // Enforce deterministic ID generation if missing from client payload
+        Guid transactionId = request.TransactionId == Guid.Empty ? Guid.NewGuid() : request.TransactionId;
+
+        logger.LogInformation(
+            "Ingesting transaction request. Allocated TransactionId: {TransactionId} for Amount: {Amount}",
+            transactionId,
+            request.Amount);
+
+        // Map and publish the initialization command to the dedicated Kafka topic partition
+        await producer.Produce(new StartTransactionSaga
+        {
+            TransactionId = transactionId,
+            SourceAccountId = request.SourceAccountId,
+            TargetAccountId = request.TargetAccountId,
+            Amount = request.Amount,
+            Currency = request.Currency
+        }, cancellationToken);
 
         // Prepare the standard enterprise processing stub response
         var response = new

@@ -34,19 +34,20 @@ This document outlines the complete iterative implementation plan for the `integ
     - Dedicated directories, solutions, and internal dependency injection footprints are created for the orchestrator and all three saga steps.
     - Each service runs independently as a standalone host and references only its dedicated infrastructure/database connections.
 
-### 📌 Issue #3: Asynchronous Saga Orchestration via MassTransit Courier
+### 📌 Issue #3: Multi-Level Sagas: Asynchronous Stateful Orchestration & Courier Routing Slips
 *   **Git Branch:** `feature/issue-3`
-*   **Description:** Implement the complete end-to-end asynchronous distributed transaction lifecycle using **MassTransit Saga State Machine** (Stateful Orchestration). The `ProcessingService` must ingest HTTP requests and fire a startup trigger. The `SagaOrchestrator` must coordinate step-by-step executions across the network. Additionally, add a transaction lookup mechanism for client status polling.
+*   **Description:** Implement the end-to-end distributed transaction lifecycle using a two-level Saga design. The top level leverages **MassTransit Saga State Machine** (Stateful Orchestration) via Kafka to coordinate financial business states across decoupled services. The execution of the final step triggers a lower-level **MassTransit Courier Routing Slip** (Stateless Orchestration) inside the Core Ledger service to guarantee transaction writes across multiple local storage engines with automated technical rollbacks.
 *   **Todo List:**
-    - [ ] Implement a stateful Saga State Machine class within `SagaOrchestrator` to track financial execution states (`Started`, `FundsHeld`, `ComplianceApproved`, `Completed`, `Failed`).
-    - [ ] Code the state consumers: `HoldMoneyCommand` (with rollback compensation), `CheckComplianceCommand`, and `CommitLedgerCommand`.
-    - [ ] Implement a nested **MassTransit Courier Routing Slip** inside `CoreLedger.Service` to handle `CommitLedgerCommand` via three sequential technical activities: `WriteAuditTrailActivity` (Postgres), `UpdateCacheActivity` (Redis), and `InvalidateDwhWatermarkActivity` (ETL marker).
-    - [ ] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionCommand` to Kafka and immediately return `HTTP 202 Accepted` along with a unique `TransactionId` (GUID) to the caller.
-    - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `ProcessingService` that reads the current execution state from the database, allowing clients to track saga outcomes.
+    - [ ] Implement the top-level `TransactionSagaStateMachine` in `SagaOrchestrator` to track global financial states (`Started`, `AwaitingBalance`, `AwaitingCompliance`, `Completed`, `Failed`).
+    - [ ] Implement foundational command consumers across participant services to process global steps: `HoldAccountBalanceConsumer` (with compensation handler) and `CheckComplianceLimitsConsumer`.
+    - [ ] Create an explicit execution boundary for the Ledger step by hosting a local **MassTransit Courier Routing Slip** inside `CoreLedger.Service`.
+    - [ ] Code three sequential technical activities managed by the Courier Routing Slip: `WriteAuditTrailActivity` (PostgreSQL), `UpdateCacheActivity` (Redis), and `InvalidateDwhWatermarkActivity` (ETL marker).
+    - [ ] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionSaga` command to Kafka and return `HTTP 202 Accepted` with a unique `TransactionId` (GUID).
+    - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `Processing.Api` that reads the current execution state from the Saga storage layer.
 *   **Definition of Done:**
-    - Postman sending a POST transaction receives a superfast `202 Accepted` reply.
-    - The distributed transaction executes flawlessly in the background across Kafka topics (Balance -> Compliance -> Ledger).
-    - The Ledger service successfully executes its internal technical steps via a `Routing Slip`; if a late activity fails (e.g., Redis timeout), it triggers automated local compensations.
+    - Postman sending a POST transaction receives an immediate `202 Accepted` reply.
+    - The global distributed transaction executes sequentially across Kafka topics (Balance -> Compliance -> Ledger).
+    - The Ledger service successfully chains its internal engineering actions via a `Routing Slip`. If a late local activity fails (e.g., Redis timeout), it triggers automated technical compensations in reverse order without breaking global business state.
     - Making a GET request to the polling endpoint correctly reflects the completed financial or compensated failure state of the transaction.
 
 ---

@@ -6,10 +6,6 @@ HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 // Configure MassTransit with Kafka transport footprint
 builder.Services.AddMassTransit(x =>
 {
-    // Register the stateful saga state machine inside IoC container
-    x.AddSagaStateMachine<TransactionSagaStateMachine, TransactionSagaInstance>()
-        .InMemoryRepository(); // InMemory storage setup for baseline skeleton phase
-
     x.UsingInMemory((context, cfg) =>
     {
         cfg.ConfigureEndpoints(context);
@@ -18,6 +14,10 @@ builder.Services.AddMassTransit(x =>
     // Establish baseline Kafka rider footprint required for Issue #2
     x.AddRider(rider =>
     {
+        // Register the stateful saga state machine inside IoC container
+        rider.AddSagaStateMachine<TransactionSagaStateMachine, TransactionSagaInstance>()
+                .InMemoryRepository();
+
         // Bind saga consumers to listen to their respective Kafka topics
         rider.AddConsumersFromNamespaceContaining<TransactionSagaStateMachine>();
 

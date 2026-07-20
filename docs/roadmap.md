@@ -25,11 +25,11 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Git Branch:** `feature/issue-2`
 *   **Description:** Following the **Database-per-Service** architectural pattern, isolate the execution environments for each distributed transaction step. This task involves establishing three backend worker services (Balance, Compliance, Ledger) and initializing a central standalone `IntegrationBus.SagaOrchestrator` worker that will drive the stateful transaction machine.
 *   **Todo List:**
-    - [ ] Initialize `IntegrationBus.SagaOrchestrator` (.NET 9 Worker) responsible for handling MassTransit Saga State Machine logic.
-    - [ ] Initialize `IntegrationBus.AccountBalance.Service` (.NET 9 Worker) to process transaction funds reservation.
-    - [ ] Initialize `IntegrationBus.Compliance.Service` (.NET 9 Worker) to process declarative limit checks.
-    - [ ] Initialize `IntegrationBus.CoreLedger.Service` (.NET 9 Worker) to write the immutable final transaction records.
-    - [ ] Install MassTransit `v8.5.10` in all 4 new projects and configure baseline consumers subscribing to their respective Kafka topics.
+    - [x] Initialize `IntegrationBus.SagaOrchestrator` (.NET 9 Worker) responsible for handling MassTransit Saga State Machine logic.
+    - [x] Initialize `IntegrationBus.AccountBalance.Service` (.NET 9 Worker) to process transaction funds reservation.
+    - [x] Initialize `IntegrationBus.Compliance.Service` (.NET 9 Worker) to process declarative limit checks.
+    - [x] Initialize `IntegrationBus.CoreLedger.Service` (.NET 9 Worker) to write the immutable final transaction records.
+    - [x] Install MassTransit `v8.5.10` in all 4 new projects and configure baseline consumers subscribing to their respective Kafka topics.
 *   **Definition of Done:**
     - Dedicated directories, solutions, and internal dependency injection footprints are created for the orchestrator and all three saga steps.
     - Each service runs independently as a standalone host and references only its dedicated infrastructure/database connections.

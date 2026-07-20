@@ -1,7 +1,18 @@
 using MassTransit;
 using Scalar.AspNetCore;
+using Serilog;
+using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+// Inject Serilog provider infrastructure into internal dependency container
+builder.Services.AddSerilog();
 
 // Register controllers and native OpenAPI specification engine
 builder.Services.AddControllers();
@@ -12,6 +23,9 @@ builder.Services.AddMassTransit(x =>
 {
     x.AddRider(rider =>
     {
+        // Explicitly register the outbound producer footprint for the startup trigger command
+        rider.AddProducer<StartTransactionSaga>("saga-transaction-start");
+
         rider.UsingKafka((context, k) =>
         {
             k.Host("localhost:9092");

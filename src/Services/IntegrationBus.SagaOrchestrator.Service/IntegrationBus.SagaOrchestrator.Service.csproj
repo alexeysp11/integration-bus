@@ -1,19 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Enables explicit compiler export of XML comments for OpenAPI schema generation -->
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <UserSecretsId>9527711a-aab5-4f83-b42e-5720c45cc3e1</UserSecretsId>
+    <UserSecretsId>dotnet-IntegrationBus.SagaOrchestrator.Service-4b34c939-964e-4b8e-97ee-3ff9d3227188</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="MassTransit" Version="8.5.10" />
     <PackageReference Include="MassTransit.Kafka" Version="8.5.10" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
-    <PackageReference Include="Scalar.AspNetCore" Version="2.16.15" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
     <PackageReference Include="Serilog" Version="4.4.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
@@ -21,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Contracts\IntegrationBus.AccountBalance.Contracts\IntegrationBus.AccountBalance.Contracts.csproj" />
     <ProjectReference Include="..\..\Contracts\IntegrationBus.SagaOrchestrator.Contracts\IntegrationBus.SagaOrchestrator.Contracts.csproj" />
   </ItemGroup>
-
 </Project>

@@ -23,6 +23,28 @@ var screen = new Project.UI.SimpleMessageScreen();
 TransactionManager manager = new();
 SimpleMessageScreen screen = new();
 ```
+### Stateful Message Contracts & Record Architecture
+* **Saga Context Isolation:** Messaging contracts must be structurally segregated into dedicated `.Contracts` projects mapped to their respective bounded contexts (e.g., `IntegrationBus.AccountBalance.Contracts`). A monolithic shared contracts library is strictly prohibited to prevent architectural coupling.
+* **Property Initialization & Immutability:** All messaging and API contracts must be declared as `sealed record` types utilizing target-typed object initializers combined with `get; init;` properties. Traditional positional records (constructor-based syntax) are barred to maintain explicit control over complex payload schemas, maximize readability, and ensure backward compatibility during schema evolution.
+* **Deterministic Event Naming Convention:** To minimize cognitive friction and establish an explicit visual trace within stateful orchestration flows, event contract names must explicitly mirror the driving command execution outcome. Every command must map to exactly two binary outcome events following the strict pattern: `[CommandName]Passed` and `[CommandName]Failed`.
+
+```csharp
+// ❌ WRONG - Positional records and non-deterministic event naming
+public sealed record HoldAccountBalance(Guid TransactionId, decimal Amount);
+public sealed record AccountBalanceHeld { public Guid TransactionId { get; init; } }
+
+//  RIGHT - Explicit property initialization and command-mirrored event naming
+public sealed record HoldAccountBalance
+{
+    public Guid TransactionId { get; init; }
+    public decimal Amount { get; init; }
+}
+
+public sealed record HoldAccountBalancePassed
+{
+    public Guid TransactionId { get; init; }
+}
+```
 
 ### Collections & Array Initialization
 * **Collection Expressions:** Prefer using modern C# collection expressions (square brackets `[]`) for initializing arrays, lists, spans, and collections over verbose traditional initializers.

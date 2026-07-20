@@ -1,18 +1,40 @@
-WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+using Serilog;
 
-builder.Services.AddOpenApi();
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
 
-builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
-
-WebApplication app = builder.Build();
-
-if (app.Environment.IsDevelopment())
+try
 {
-    app.MapOpenApi();
+    WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+    // Inject Serilog provider infrastructure into internal dependency container
+    builder.Services.AddSerilog();
+
+    builder.Services.AddOpenApi();
+
+    builder.Services.AddReverseProxy()
+        .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+    WebApplication app = builder.Build();
+
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+    }
+
+    app.UseHttpsRedirection();
+    app.MapReverseProxy();
+
+    await app.RunAsync();
 }
-
-app.UseHttpsRedirection();
-app.MapReverseProxy();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Gateway API proxy layer host terminated unexpectedly");
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}

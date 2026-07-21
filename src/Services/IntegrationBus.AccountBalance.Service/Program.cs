@@ -2,6 +2,7 @@ using MassTransit;
 using Serilog;
 using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -33,6 +34,9 @@ try
         {
             // Automatically discover and register HoldAccountBalanceConsumer inside IoC container
             rider.AddConsumer<HoldAccountBalanceConsumer>();
+
+            rider.AddProducer<HoldAccountBalancePassed>("account-balance-hold-passed");
+            rider.AddProducer<HoldAccountBalanceFailed>("account-balance-hold-failed");
 
             rider.UsingKafka((context, k) =>
             {

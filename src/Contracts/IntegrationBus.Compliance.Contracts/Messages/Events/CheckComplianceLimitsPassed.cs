@@ -9,4 +9,7 @@ public sealed record CheckComplianceLimitsPassed
     /// Gets the correlated tracking identifier for the saga instance.
     /// </summary>
     public Guid TransactionId { get; init; }
+
+    // TODO: add xml comment.
+    public DateTime VerifiedAt { get; init; } = DateTime.UtcNow;
 }

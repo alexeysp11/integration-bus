@@ -1,6 +1,11 @@
 using MassTransit;
 using Serilog;
 using IntegrationBus.SagaOrchestrator.Service.Sagas;
+using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.Compliance.Contracts.Messages.Commands;
+using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using IntegrationBus.Compliance.Contracts.Messages.Events;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -33,12 +38,16 @@ try
             // Bind saga consumers to listen to their respective Kafka topics
             rider.AddConsumersFromNamespaceContaining<TransactionSagaStateMachine>();
 
+            rider.AddProducer<HoldAccountBalance>("account-balance-hold");
+            rider.AddProducer<CheckComplianceLimits>("compliance-limits-check");
+            rider.AddProducer<ReleaseAccountBalance>("account-balance-release");
+
             rider.UsingKafka((context, k) =>
             {
                 k.Host("localhost:9092"); // Default local Kafka broker address allocation
 
                 // Explicitly map incoming Kafka topic endpoint to the Saga instance listener
-                k.TopicEndpoint<IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands.StartTransactionSaga>(
+                k.TopicEndpoint<StartTransactionSaga>(
                     "saga-transaction-start",
                     "saga-orchestrator-group",
                     e =>
@@ -46,7 +55,7 @@ try
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
-                k.TopicEndpoint<IntegrationBus.AccountBalance.Contracts.Messages.Events.HoldAccountBalancePassed>(
+                k.TopicEndpoint<HoldAccountBalancePassed>(
                     "account-balance-hold-passed",
                     "saga-orchestrator-group",
                     e =>
@@ -54,8 +63,24 @@ try
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
-                k.TopicEndpoint<IntegrationBus.AccountBalance.Contracts.Messages.Events.HoldAccountBalanceFailed>(
+                k.TopicEndpoint<HoldAccountBalanceFailed>(
                     "account-balance-hold-failed",
+                    "saga-orchestrator-group",
+                    e =>
+                    {
+                        e.ConfigureSaga<TransactionSagaInstance>(context);
+                    });
+
+                k.TopicEndpoint<CheckComplianceLimitsPassed>(
+                    "compliance-limits-check-passed",
+                    "saga-orchestrator-group",
+                    e =>
+                    {
+                        e.ConfigureSaga<TransactionSagaInstance>(context);
+                    });
+
+                k.TopicEndpoint<CheckComplianceLimitsFailed>(
+                    "compliance-limits-check-failed",
                     "saga-orchestrator-group",
                     e =>
                     {

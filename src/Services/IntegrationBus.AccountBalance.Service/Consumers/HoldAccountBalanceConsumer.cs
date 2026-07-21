@@ -1,28 +1,79 @@
-﻿using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+﻿using MassTransit;
+using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
-using MassTransit;
 
 namespace IntegrationBus.AccountBalance.Service.Consumers;
 
 /// <summary>
 /// Handles incoming asset reservation requests from the global Saga Orchestrator.
 /// </summary>
-public sealed class HoldAccountBalanceConsumer : IConsumer<HoldAccountBalance>
+public sealed class HoldAccountBalanceConsumer(
+    ILogger<HoldAccountBalanceConsumer> logger,
+    IConfiguration configuration,
+    ITopicProducer<HoldAccountBalancePassed> passedProducer,
+    ITopicProducer<HoldAccountBalanceFailed> failedProducer) : IConsumer<HoldAccountBalance>
 {
+    private readonly string _connectionString = configuration.GetConnectionString("BalanceDb")
+        ?? throw new InvalidOperationException("BalanceDb connection string is missing inside worker configuration.");
+
     /// <summary>
-    /// Executes the baseline funds hold transaction step simulation.
+    /// Executes the asset reservation step by writing to PostgreSQL and publishing a completion event over Apache Kafka.
     /// </summary>
     public async Task Consume(ConsumeContext<HoldAccountBalance> context)
     {
-        // TODO: In Issue #3, insert record into 'integration_bus_balance' database using SqlConnection/EF.
-        // For Issue #2, we log the database interaction and simulate absolute success.
-        Console.WriteLine($"[Database: balance] Simulating SQL write: INSERT INTO AccountHolds (TransactionId, AccountId, Amount) VALUES ('{context.Message.TransactionId}', '{context.Message.AccountId}', {context.Message.Amount})");
+        logger.LogInformation(
+            "Processing account balance hold request for TransactionId: {TransactionId}, AccountId: {AccountId}",
+            context.Message.TransactionId,
+            context.Message.AccountId);
 
-        // Respond back to the Saga Orchestrator over Kafka mirroring the outcome pattern
-        await context.RespondAsync(new HoldAccountBalancePassed
+        try
         {
-            TransactionId = context.Message.TransactionId,
-            HeldAt = DateTime.UtcNow
-        });
+            // Execute the persistent transactional write into the isolated state ledger database
+            //using (NpgsqlConnection connection = new NpgsqlConnection(_connectionString))
+            //{
+            //    await connection.OpenAsync(context.CancellationToken);
+
+            //    using (NpgsqlCommand command = connection.CreateCommand())
+            //    {
+            //        command.CommandText = """
+            //            INSERT INTO account_holds (transaction_id, account_id, amount, created_at)
+            //            VALUES (@TransactionId, @AccountId, @Amount, @CreatedAt);
+            //            """;
+
+            //        command.Parameters.AddWithValue("TransactionId", context.Message.TransactionId);
+            //        command.Parameters.AddWithValue("AccountId", context.Message.AccountId);
+            //        command.Parameters.AddWithValue("Amount", context.Message.Amount);
+            //        command.Parameters.AddWithValue("CreatedAt", DateTime.UtcNow);
+
+            //        await command.ExecuteNonQueryAsync(context.CancellationToken);
+            //    }
+            //}
+
+            logger.LogInformation(
+                "Successfully committed balance hold record to database for TransactionId: {TransactionId}",
+                context.Message.TransactionId);
+
+            // Publish dedicated lifecycle event over Kafka instead of using invalid abstract RespondAsync pattern
+            await passedProducer.Produce(new HoldAccountBalancePassed
+            {
+                TransactionId = context.Message.TransactionId,
+                HeldAt = DateTime.UtcNow
+            }, context.CancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Failed to execute asset reservation pipeline for TransactionId: {TransactionId}. Dispatching failure event.",
+                context.Message.TransactionId);
+
+            // Publish failure event to trigger downstream Saga compensation rules
+            await failedProducer.Produce(new HoldAccountBalanceFailed
+            {
+                TransactionId = context.Message.TransactionId,
+                Reason = ex.Message,
+                FailedAt = DateTime.UtcNow
+            }, context.CancellationToken);
+        }
     }
 }

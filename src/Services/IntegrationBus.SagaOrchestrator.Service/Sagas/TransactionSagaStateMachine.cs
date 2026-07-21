@@ -1,6 +1,7 @@
-﻿using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
-using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+﻿using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using IntegrationBus.SagaOrchestrator.Service.Activities;
 using MassTransit;
 
 namespace IntegrationBus.SagaOrchestrator.Service.Sagas;
@@ -21,6 +22,8 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
         Event(() => StartTransactionSaga, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => HoldAccountBalancePassed, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => HoldAccountBalanceFailed, x => x.CorrelateById(context => context.Message.TransactionId));
+        Event(() => CheckComplianceLimitsPassed, x => x.CorrelateById(context => context.Message.TransactionId));
+        Event(() => CheckComplianceLimitsFailed, x => x.CorrelateById(context => context.Message.TransactionId));
 
         Initially(
             When(StartTransactionSaga)
@@ -33,23 +36,29 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
                     context.Saga.CurrencyId = (int)context.Message.Currency;
                     context.Saga.CreatedAt = DateTime.UtcNow;
                 })
-                .SendAsync(
-                    new Uri("queue:account-balance-hold"), // Target Kafka topic/queue endpoint
-                    context => context.Init<HoldAccountBalance>(new HoldAccountBalance
-                    {
-                        TransactionId = context.Saga.CorrelationId,
-                        AccountId = context.Saga.SourceAccountId,
-                        Amount = context.Saga.Amount
-                    }))
+                .Activity(x => x.OfType<HoldAccountBalanceActivity>())
                 .TransitionTo(AwaitingAccountBalanceHold));
 
         During(AwaitingAccountBalanceHold,
             When(HoldAccountBalancePassed)
+                .Activity(x => x.OfType<CheckComplianceLimitsActivity>())
+                .TransitionTo(AwaitingComplianceLimitsCheck),
+
+            When(HoldAccountBalanceFailed)
                 .Then(context =>
                 {
-                    // Proceed to next step inside Issue #3 (Compliance)
-                }),
-            When(HoldAccountBalanceFailed)
+                    // Handle failure boundary inside Issue #3
+                }));
+
+        During(AwaitingComplianceLimitsCheck,
+            When(CheckComplianceLimitsPassed)
+                .Then(context =>
+                {
+                    //_logger.LogInformation("Compliance verification absolute success for TransactionId: {TransactionId}. Triggering Ledger Routing Slip...", context.Saga.CorrelationId);
+                })
+                .TransitionTo(AwaitingLedgerCommit),
+
+            When(CheckComplianceLimitsFailed)
                 .Then(context =>
                 {
                     // Handle failure boundary inside Issue #3
@@ -60,6 +69,26 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// Gets the state definition representing that the saga is waiting for the Account Balance service to reserve funds.
     /// </summary>
     public State AwaitingAccountBalanceHold { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the state definition representing that the saga is waiting for the Compliance service to validate limits.
+    /// </summary>
+    public State AwaitingComplianceLimitsCheck { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the state definition representing that the saga is waiting for the Core Ledger courier routing slip to execute.
+    /// </summary>
+    public State AwaitingLedgerCommit { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the trigger event configuration indicating that the compliance limits verification passed successfully.
+    /// </summary>
+    public Event<CheckComplianceLimitsPassed> CheckComplianceLimitsPassed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the trigger event configuration indicating that the compliance limits verification failed.
+    /// </summary>
+    public Event<CheckComplianceLimitsFailed> CheckComplianceLimitsFailed { get; private set; } = null!;
 
     /// <summary>
     /// Gets the trigger event configuration for the transaction initialization command.

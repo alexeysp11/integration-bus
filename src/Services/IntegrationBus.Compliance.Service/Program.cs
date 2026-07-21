@@ -1,6 +1,7 @@
 using MassTransit;
 using Serilog;
 using IntegrationBus.Compliance.Service.Consumers;
+using IntegrationBus.Compliance.Contracts.Messages.Events;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -25,6 +26,9 @@ try
         x.AddRider(rider =>
         {
             rider.AddConsumer<CheckComplianceLimitsConsumer>();
+
+            rider.AddProducer<CheckComplianceLimitsPassed>("compliance-limits-check-passed");
+            rider.AddProducer<CheckComplianceLimitsFailed>("compliance-limits-check-failed");
 
             rider.UsingKafka((context, k) =>
             {

@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Contracts\IntegrationBus.AccountBalance.Contracts\IntegrationBus.AccountBalance.Contracts.csproj" />
+    <ProjectReference Include="..\..\Contracts\IntegrationBus.Compliance.Contracts\IntegrationBus.Compliance.Contracts.csproj" />
     <ProjectReference Include="..\..\Contracts\IntegrationBus.SagaOrchestrator.Contracts\IntegrationBus.SagaOrchestrator.Contracts.csproj" />
   </ItemGroup>
 </Project>

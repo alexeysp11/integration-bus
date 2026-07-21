@@ -1,8 +1,8 @@
-﻿using IntegrationBus.AccountBalance.Contracts.Messages.Events;
-using IntegrationBus.Compliance.Contracts.Messages.Events;
-using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+﻿using MassTransit;
 using IntegrationBus.SagaOrchestrator.Service.Activities;
-using MassTransit;
+using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.Compliance.Contracts.Messages.Events;
 
 namespace IntegrationBus.SagaOrchestrator.Service.Sagas;
 
@@ -16,9 +16,10 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// </summary>
     public TransactionSagaStateMachine()
     {
+        // Define the state tracking property matching the persistent instance
         InstanceState(x => x.CurrentState);
 
-        // Bind incoming Kafka events/commands to the state machine correlation identifier
+        // Bind incoming Kafka events and command messages to the saga correlation tracking boundaries
         Event(() => StartTransactionSaga, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => HoldAccountBalancePassed, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => HoldAccountBalanceFailed, x => x.CorrelateById(context => context.Message.TransactionId));
@@ -44,25 +45,28 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
                 .Activity(x => x.OfType<CheckComplianceLimitsActivity>())
                 .TransitionTo(AwaitingComplianceLimitsCheck),
 
+            // If the balance cannot be held, the transaction is terminal-failed immediately (no rollback needed)
             When(HoldAccountBalanceFailed)
                 .Then(context =>
                 {
-                    // Handle failure boundary inside Issue #3
-                }));
+                    context.Saga.ErrorMessage = context.Message.Reason;
+                })
+                .TransitionTo(Failed));
 
         During(AwaitingComplianceLimitsCheck,
+            // Compliance success advances the saga to launch the local multi-activity transaction ledger step
             When(CheckComplianceLimitsPassed)
-                .Then(context =>
-                {
-                    //_logger.LogInformation("Compliance verification absolute success for TransactionId: {TransactionId}. Triggering Ledger Routing Slip...", context.Saga.CorrelationId);
-                })
+                .Activity(x => x.OfType<ProcessLedgerWriteActivity>())
                 .TransitionTo(AwaitingLedgerCommit),
 
+            // Compliance failure triggers technical compensation sequence to roll back the locked account balances
             When(CheckComplianceLimitsFailed)
                 .Then(context =>
                 {
-                    // Handle failure boundary inside Issue #3
-                }));
+                    context.Saga.ErrorMessage = context.Message.Reason;
+                })
+                .Activity(x => x.OfType<ReleaseAccountBalanceHoldActivity>())
+                .TransitionTo(Failed));
     }
 
     /// <summary>
@@ -79,6 +83,9 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// Gets the state definition representing that the saga is waiting for the Core Ledger courier routing slip to execute.
     /// </summary>
     public State AwaitingLedgerCommit { get; private set; } = null!;
+
+    // TODO: add xml comment.
+    public State Failed { get; private set; } = null!;
 
     /// <summary>
     /// Gets the trigger event configuration indicating that the compliance limits verification passed successfully.

@@ -41,4 +41,7 @@ public sealed class TransactionSagaInstance : SagaStateMachineInstance
     /// Gets or sets the timestamp indicating when the saga instance was originally created.
     /// </summary>
     public DateTime CreatedAt { get; set; }
+
+    // TODO: add xml comment.
+    public string? ErrorMessage {  get; set; }
 }

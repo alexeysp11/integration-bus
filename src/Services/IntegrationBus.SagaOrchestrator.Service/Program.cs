@@ -6,6 +6,7 @@ using IntegrationBus.Compliance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
+using IntegrationBus.CoreLedger.Contracts.Messages.Commands;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -41,6 +42,7 @@ try
             rider.AddProducer<HoldAccountBalance>("account-balance-hold");
             rider.AddProducer<CheckComplianceLimits>("compliance-limits-check");
             rider.AddProducer<ReleaseAccountBalance>("account-balance-release");
+            rider.AddProducer<WriteLedgerRecord>("core-ledger-record-write");
 
             rider.UsingKafka((context, k) =>
             {

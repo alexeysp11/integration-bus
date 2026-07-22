@@ -7,6 +7,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Contracts.Messages.Commands;
+using IntegrationBus.CoreLedger.Contracts.Messages.Events;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -83,6 +84,14 @@ try
 
                 k.TopicEndpoint<CheckComplianceLimitsFailed>(
                     "compliance-limits-check-failed",
+                    "saga-orchestrator-group",
+                    e =>
+                    {
+                        e.ConfigureSaga<TransactionSagaInstance>(context);
+                    });
+
+                k.TopicEndpoint<WriteLedgerRecordPassed>(
+                    "core-ledger-record-write-passed",
                     "saga-orchestrator-group",
                     e =>
                     {

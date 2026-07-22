@@ -3,6 +3,7 @@ using IntegrationBus.SagaOrchestrator.Service.Activities;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
+using IntegrationBus.CoreLedger.Contracts.Messages.Events;
 
 namespace IntegrationBus.SagaOrchestrator.Service.Sagas;
 
@@ -25,6 +26,8 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
         Event(() => HoldAccountBalanceFailed, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => CheckComplianceLimitsPassed, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => CheckComplianceLimitsFailed, x => x.CorrelateById(context => context.Message.TransactionId));
+        Event(() => WriteLedgerRecordPassed, x => x.CorrelateById(context => context.Message.TransactionId));
+        Event(() => WriteLedgerRecordFailed, x => x.CorrelateById(context => context.Message.TransactionId));
 
         Initially(
             When(StartTransactionSaga)
@@ -65,7 +68,26 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
                 {
                     context.Saga.ErrorMessage = context.Message.Reason;
                 })
-                .Activity(x => x.OfType<ReleaseAccountBalanceHoldActivity>())
+                .Activity(x => x.OfType<ReleaseAccountBalanceActivity>())
+                .TransitionTo(Failed));
+
+        During(AwaitingLedgerCommit,
+            // Terminal success state. The local routing slip inside the ledger service finished successfully.
+            When(WriteLedgerRecordPassed)
+                .Then(context =>
+                {
+                    context.Saga.UpdatedAt = DateTime.UtcNow;
+                })
+                .TransitionTo(Completed),
+
+            // Technical failure state. A late activity inside the local routing slip crashed (e.g., Redis timeout).
+            // Triggers downstream technical rollbacks to clear locked states.
+            When(WriteLedgerRecordFailed)
+                .Then(context =>
+                {
+                    context.Saga.ErrorMessage = context.Message.Reason;
+                })
+                .Activity(x => x.OfType<ReleaseAccountBalanceActivity>())
                 .TransitionTo(Failed));
     }
 
@@ -84,18 +106,10 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// </summary>
     public State AwaitingLedgerCommit { get; private set; } = null!;
 
+    public State Completed { get; private set; } = null!;
+
     // TODO: add xml comment.
     public State Failed { get; private set; } = null!;
-
-    /// <summary>
-    /// Gets the trigger event configuration indicating that the compliance limits verification passed successfully.
-    /// </summary>
-    public Event<CheckComplianceLimitsPassed> CheckComplianceLimitsPassed { get; private set; } = null!;
-
-    /// <summary>
-    /// Gets the trigger event configuration indicating that the compliance limits verification failed.
-    /// </summary>
-    public Event<CheckComplianceLimitsFailed> CheckComplianceLimitsFailed { get; private set; } = null!;
 
     /// <summary>
     /// Gets the trigger event configuration for the transaction initialization command.
@@ -111,4 +125,17 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// Gets the trigger event configuration indicating that the balance hold operation failed.
     /// </summary>
     public Event<HoldAccountBalanceFailed> HoldAccountBalanceFailed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the trigger event configuration indicating that the compliance limits verification passed successfully.
+    /// </summary>
+    public Event<CheckComplianceLimitsPassed> CheckComplianceLimitsPassed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the trigger event configuration indicating that the compliance limits verification failed.
+    /// </summary>
+    public Event<CheckComplianceLimitsFailed> CheckComplianceLimitsFailed { get; private set; } = null!;
+
+    public Event<WriteLedgerRecordPassed> WriteLedgerRecordPassed { get; private set; } = null!;
+    public Event<WriteLedgerRecordFailed> WriteLedgerRecordFailed { get; private set; } = null!;
 }

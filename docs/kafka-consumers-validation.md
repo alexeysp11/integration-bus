@@ -76,6 +76,19 @@ This document provides deterministic JSON payloads and instructions required to 
 
 ---
 
+## Distributed Transaction Flow & Multi-Level Compensation Lifecycle
+
+The system utilizes a two-level orchestration engine: **Global Stateful Orchestration** (via MassTransit Saga State Machine and Apache Kafka) and **Local Stateless Orchestration** (via MassTransit Courier Routing Slips over InMemory bus inside the Ledger domain).
+
+```text
+[Step 1: Ingestion API] ──> [Step 2: Account Balance] ──> [Step 3: Compliance] ──> [Step 4: Core Ledger (Routing Slip)]
+                                  │                            │                        │
+Compensations:                    └── None (Terminal Failure)  └── Global Release       └── 1. Local Automated Compensation (Courier)
+                                                                                            2. Global Balance Release Trigger
+```
+
+---
+
 ## 🏁 Definition of Done Criteria Check
 
 The infrastructure footprint validation is considered absolute if:

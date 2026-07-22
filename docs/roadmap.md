@@ -41,7 +41,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - [ ] Implement the top-level `TransactionSagaStateMachine` in `SagaOrchestrator` to track global financial states (`Started`, `AwaitingBalance`, `AwaitingCompliance`, `Completed`, `Failed`).
     - [ ] Implement foundational command consumers across participant services to process global steps: `HoldAccountBalanceConsumer` (with compensation handler) and `CheckComplianceLimitsConsumer`.
     - [ ] Create an explicit execution boundary for the Ledger step by hosting a local **MassTransit Courier Routing Slip** inside `CoreLedger.Service`.
-    - [ ] Code three sequential technical activities managed by the Courier Routing Slip: `WriteAuditTrailActivity` (PostgreSQL), `UpdateCacheActivity` (Redis), and `InvalidateDwhWatermarkActivity` (ETL marker).
+    - [ ] Code three sequential technical activities managed by the Courier Routing Slip: `WriteAuditTrailActivity` (PostgreSQL), `UpdateCacheActivity` (Redis), and `PublishLedgerCommittedActivity` (Outbox notification trigger).
     - [ ] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionSaga` command to Kafka and return `HTTP 202 Accepted` with a unique `TransactionId` (GUID).
     - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `Processing.Api` that reads the current execution state from the Saga storage layer.
 *   **Definition of Done:**
@@ -56,7 +56,7 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ### 📌 Issue #4: Integration Testing for Saga Compensations
 *   **Git Branch:** `test/issue-4`
-*   **Description:** Add a comprehensive integration test suite using WebApplicationFactory and the MassTransit test harness to ensure that infrastructure and business validation errors trigger the correct automated rollback behaviors.
+*   **Description:** Add a comprehensive integration test suite using `WebApplicationFactory` and the MassTransit test harness to ensure that infrastructure and business validation errors trigger the correct automated rollback behaviors.
 *   **Todo List:**
     - [ ] Setup an integration test project using `xUnit` and `FluentAssertions`.
     - [ ] Write an integration test case for a complete successful happy path saga execution.

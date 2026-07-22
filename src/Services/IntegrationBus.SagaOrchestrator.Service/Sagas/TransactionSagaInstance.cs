@@ -43,5 +43,8 @@ public sealed class TransactionSagaInstance : SagaStateMachineInstance
     public DateTime CreatedAt { get; set; }
 
     // TODO: add xml comment.
+    public DateTime UpdatedAt { get; set; }
+
+    // TODO: add xml comment.
     public string? ErrorMessage {  get; set; }
 }

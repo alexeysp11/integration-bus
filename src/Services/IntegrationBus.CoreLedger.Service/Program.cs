@@ -5,6 +5,8 @@ using IntegrationBus.CoreLedger.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Contracts.Messages.Commands;
 using IntegrationBus.CoreLedger.Service.Models;
 using IntegrationBus.CoreLedger.Service.Activities;
+using IntegrationBus.CoreLedger.Service.DbContexts;
+using Microsoft.EntityFrameworkCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -17,8 +19,8 @@ try
     HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
     builder.Services.AddSerilog();
 
-    string ledgerDbConnection = builder.Configuration.GetConnectionString("LedgerDb")
-        ?? throw new InvalidOperationException("LedgerDb connection string is missing.");
+    builder.Services.AddDbContext<LedgerDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("LedgerDb")));
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 
@@ -66,6 +68,13 @@ try
     });
 
     IHost host = builder.Build();
+
+    using (IServiceScope scope = host.Services.CreateScope())
+    {
+        LedgerDbContext dbContext = scope.ServiceProvider.GetRequiredService<LedgerDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)

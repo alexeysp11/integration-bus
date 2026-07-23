@@ -28,12 +28,12 @@ public sealed class WriteLedgerRecordConsumer(
             Guid trackingId = Guid.NewGuid();
             RoutingSlipBuilder builder = new(trackingId);
 
-            // 🚀 FIX 1: Use AddHeader instead of SetVariables. This guarantees metadata propagation to system events.
+            // Use AddHeader instead of SetVariables. This guarantees metadata propagation to system events.
             builder.AddVariable("TransactionId", context.Message.TransactionId);
 
             Uri targetEventAddress = new("queue:ledger-routing-slip-events");
 
-            // 🔥 FIX 2: Removed invalid 'await' keyword. AddSubscription is a synchronous configuration method.
+            // Removed invalid 'await' keyword. AddSubscription is a synchronous configuration method.
             builder.AddSubscription(
                 targetEventAddress,
                 RoutingSlipEvents.Completed | RoutingSlipEvents.Faulted,

@@ -1,6 +1,7 @@
 ﻿using System.Data.Common;
 using Dapper;
 using IntegrationBus.CoreLedger.Service.DbContexts;
+using IntegrationBus.CoreLedger.Service.Entities;
 using IntegrationBus.CoreLedger.Service.Models;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,12 @@ namespace IntegrationBus.CoreLedger.Service.Activities;
 public sealed class WriteAuditTrailActivity(ILogger<WriteAuditTrailActivity> logger, LedgerDbContext dbContext)
     : IActivity<WriteAuditTrailArguments, WriteAuditTrailLog>
 {
-    private const string InsertIntoLedgerEntriesSql = @"INSERT INTO ""LedgerEntries"" (""TransactionId"", ""Amount"", ""CreatedAt"") VALUES (@TransactionId, @Amount, @CreatedAt);";
+    private const string InsertIntoLedgerEntriesSql = $@"
+        INSERT INTO ""{nameof(LedgerDbContext.LedgerEntries)}"" (
+            ""{nameof(LedgerEntryEntity.TransactionId)}"",
+            ""{nameof(LedgerEntryEntity.Amount)}"",
+            ""{nameof(LedgerEntryEntity.CreatedAt)}"")
+        VALUES (@TransactionId, @Amount, @CreatedAt);";
     
     /// <summary>
     /// Executes the persistent transactional database record allocation simulation.

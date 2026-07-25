@@ -56,7 +56,7 @@ int[] codes = new int[] { 200, 400 };
 
 //  RIGHT
 List<string> topics = ["balance", "ledger"];
-int[] codes =;
+int[] codes = [200, 400];
 ```
 
 ### Inline Comments & Refactoring Safety
@@ -70,6 +70,68 @@ int[] codes =;
 //  RIGHT
 // Load the transaction entity from PostgreSQL
 // Mutate cache state inside Redis cluster
+```
+
+### Primary Constructors for Dependency Injection and Clean Syntax
+To maximize code readability, eliminate boilerplate code, and reduce memory allocations during object instantiation, **Primary Constructors** (introduced in C# 12) must be used across all application layers (Services, Consumers, Controllers, Factories).
+
+#### 1. Dependency Injection in Services and Consumers
+Always use primary constructors instead of declaring explicit backing private readonly fields and mapping them inside a traditional constructor block.
+
+* **Incorrect (Legacy Boilerplate):**
+```csharp
+public class OrderProcessingService : IOrderProcessingService
+{
+    private readonly ILogger<OrderProcessingService> _logger;
+    private readonly IDbContext _context;
+
+    public OrderProcessingService(ILogger<OrderProcessingService> logger, IDbContext context)
+    {
+        _logger = logger;
+        _context = context;
+    }
+}
+```
+
+* **Correct (Mandatory Standard):**
+```csharp
+public sealed class OrderProcessingService(
+    ILogger<OrderProcessingService> logger, 
+    IDbContext context) : IOrderProcessingService
+{
+    // Parameters are automatically captured and available directly within the class scope
+}
+```
+
+#### 2. Scope Capturing Considerations
+* Parameters captured by a primary constructor are accessible throughout the entire class instance lifecycle.
+* Never expose primary constructor parameters via public properties manually unless the parameter is explicitly passed to a base class constructor or intended to initialize immutable `init` properties.
+* Combine primary constructors with `sealed` class declarations by default to enable the JIT compiler to optimize devirtualization and devirtualized calls.
+
+#### 3. Strict Architectural Exclusions
+Primary constructors **must not** be used for data-carrying structures or stateful object models. This includes:
+* **EF Core Entities / POCO Models:** ORM engines require parameterless or property-mapped constructors for proper object materialization from database rows.
+* **Data Transfer Objects (DTOs) & API Requests/Responses:** These structures rely on explicit mutable setters (`get; set;`) or init-only setters (`get; init;`) for model binding and serialization frameworks (e.g., `System.Text.Json`).
+
+* **Incorrect (Do Not Use for Entities):**
+```csharp
+// Broken: Forces compiler-generated private backing fields, breaking object initializers and EF Core tracking
+public sealed class AccountEntity(Guid id, decimal balance)
+{
+    public Guid Id { get; set; } = id;
+    public decimal Balance { get; set; } = balance;
+}
+```
+
+* **Correct (Standard Entity Model):**
+```csharp
+public sealed class AccountEntity
+{
+    public Guid Id { get; set; }
+    public decimal Balance { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
 ```
 
 ### 📝 Ubiquitous XML Documentation & API Metadata

@@ -1,7 +1,9 @@
 using MassTransit;
 using Serilog;
-using IntegrationBus.Compliance.Service.Consumers;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
+using IntegrationBus.Compliance.Service.Consumers;
+using IntegrationBus.Compliance.Service.DbContexts;
+using Microsoft.EntityFrameworkCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -14,8 +16,8 @@ try
     HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
     builder.Services.AddSerilog();
 
-    string complianceDbConnection = builder.Configuration.GetConnectionString("ComplianceDb")
-        ?? throw new InvalidOperationException("ComplianceDb connection string is missing.");
+    builder.Services.AddDbContext<ComplianceDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("ComplianceDb")));
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 
@@ -46,6 +48,13 @@ try
     });
 
     IHost host = builder.Build();
+
+    using (IServiceScope scope = host.Services.CreateScope())
+    {
+        ComplianceDbContext dbContext = scope.ServiceProvider.GetRequiredService<ComplianceDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)

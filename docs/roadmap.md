@@ -38,11 +38,11 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Git Branch:** `feature/issue-3`
 *   **Description:** Implement the end-to-end distributed transaction lifecycle using a two-level Saga design. The top level leverages **MassTransit Saga State Machine** (Stateful Orchestration) via Kafka to coordinate financial business states across decoupled services. The execution of the final step triggers a lower-level **MassTransit Courier Routing Slip** (Stateless Orchestration) inside the Core Ledger service to guarantee transaction writes across multiple local storage engines with automated technical rollbacks.
 *   **Todo List:**
-    - [ ] Implement the top-level `TransactionSagaStateMachine` in `SagaOrchestrator` to track global financial states (`Started`, `AwaitingBalance`, `AwaitingCompliance`, `Completed`, `Failed`).
-    - [ ] Implement foundational command consumers across participant services to process global steps: `HoldAccountBalanceConsumer` (with compensation handler) and `CheckComplianceLimitsConsumer`.
-    - [ ] Create an explicit execution boundary for the Ledger step by hosting a local **MassTransit Courier Routing Slip** inside `CoreLedger.Service`.
+    - [x] Implement the top-level `TransactionSagaStateMachine` in `SagaOrchestrator` to track global financial states (`Started`, `AwaitingBalance`, `AwaitingCompliance`, `Completed`, `Failed`).
+    - [x] Implement foundational command consumers across participant services to process global steps: `HoldAccountBalanceConsumer` (with compensation handler) and `CheckComplianceLimitsConsumer`.
+    - [x] Create an explicit execution boundary for the Ledger step by hosting a local **MassTransit Courier Routing Slip** inside `CoreLedger.Service`.
     - [ ] Code three sequential technical activities managed by the Courier Routing Slip: `WriteAuditTrailActivity` (PostgreSQL), `UpdateCacheActivity` (Redis), and `PublishLedgerCommittedActivity` (Outbox notification trigger).
-    - [ ] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionSaga` command to Kafka and return `HTTP 202 Accepted` with a unique `TransactionId` (GUID).
+    - [x] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionSaga` command to Kafka and return `HTTP 202 Accepted` with a unique `TransactionId` (GUID).
     - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `Processing.Api` that reads the current execution state from the Saga storage layer.
 *   **Definition of Done:**
     - Postman sending a POST transaction receives an immediate `202 Accepted` reply.

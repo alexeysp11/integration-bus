@@ -1,76 +1,100 @@
 ﻿using MassTransit;
-using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using Dapper;
+using Microsoft.EntityFrameworkCore;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.AccountBalance.Service.DbContexts;
+using System.Data.Common;
+using IntegrationBus.AccountBalance.Service.Entities;
 
 namespace IntegrationBus.AccountBalance.Service.Consumers;
 
 /// <summary>
-/// Handles incoming asset reservation requests from the global Saga Orchestrator.
+/// Processes account balance reservation commands inside a transactional database boundary.
 /// </summary>
 public sealed class HoldAccountBalanceConsumer(
+    BalanceDbContext dbContext,
     ILogger<HoldAccountBalanceConsumer> logger,
-    IConfiguration configuration,
     ITopicProducer<HoldAccountBalancePassed> passedProducer,
     ITopicProducer<HoldAccountBalanceFailed> failedProducer) : IConsumer<HoldAccountBalance>
 {
-    private readonly string _connectionString = configuration.GetConnectionString("BalanceDb")
-        ?? throw new InvalidOperationException("BalanceDb connection string is missing inside worker configuration.");
-
-    /// <summary>
-    /// Executes the asset reservation step by writing to PostgreSQL and publishing a completion event over Apache Kafka.
-    /// </summary>
     public async Task Consume(ConsumeContext<HoldAccountBalance> context)
     {
-        logger.LogInformation(
-            "Processing account balance hold request for TransactionId: {TransactionId}, AccountId: {AccountId}",
-            context.Message.TransactionId,
-            context.Message.AccountId);
+        HoldAccountBalance message = context.Message;
+
+        logger.LogInformation("Processing balance hold for Tx: {TransactionId}, Account: {AccountId}",
+            message.TransactionId, message.AccountId);
+
+        DbConnection connection = dbContext.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            await connection.OpenAsync(context.CancellationToken);
+        }
+
+        using DbTransaction transaction = await connection.BeginTransactionAsync(context.CancellationToken);
 
         try
         {
-            // Execute the persistent transactional write into the isolated state ledger database
-            //using (NpgsqlConnection connection = new NpgsqlConnection(_connectionString))
-            //{
-            //    await connection.OpenAsync(context.CancellationToken);
+            // Acquire a pessimistic row-level lock to prevent concurrent asset updates and race conditions.
+            const string selectSql = $@"
+                SELECT ""{nameof(AccountEntity.Balance)}""
+                FROM ""{nameof(BalanceDbContext.Accounts)}"" 
+                WHERE ""{nameof(AccountEntity.Id)}"" = @AccountId
+                FOR UPDATE;";
+            decimal? currentBalance = await connection.QuerySingleOrDefaultAsync<decimal?>(selectSql, new { message.AccountId }, transaction)
+                ?? throw new InvalidOperationException($"Account {message.AccountId} not found.");
+            if (currentBalance < message.Amount)
+            {
+                throw new InvalidOperationException($"Insufficient funds. Available: {currentBalance}, Requested: {message.Amount}");
+            }
 
-            //    using (NpgsqlCommand command = connection.CreateCommand())
-            //    {
-            //        command.CommandText = """
-            //            INSERT INTO account_holds (transaction_id, account_id, amount, created_at)
-            //            VALUES (@TransactionId, @AccountId, @Amount, @CreatedAt);
-            //            """;
+            // Deduct the requested asset allocation amount from the core account record
+            const string updateBalanceSql = $@"
+                UPDATE ""{nameof(BalanceDbContext.Accounts)}"" 
+                SET
+                    ""{nameof(AccountEntity.Balance)}"" = ""{nameof(AccountEntity.Balance)}"" - @Amount,
+                    ""{nameof(AccountEntity.UpdatedAt)}"" = @UpdatedAt 
+                WHERE ""{nameof(AccountEntity.Id)}"" = @AccountId;";
+            await connection.ExecuteAsync(updateBalanceSql, new
+            {
+                message.Amount,
+                UpdatedAt = DateTime.UtcNow,
+                message.AccountId
+            }, transaction);
 
-            //        command.Parameters.AddWithValue("TransactionId", context.Message.TransactionId);
-            //        command.Parameters.AddWithValue("AccountId", context.Message.AccountId);
-            //        command.Parameters.AddWithValue("Amount", context.Message.Amount);
-            //        command.Parameters.AddWithValue("CreatedAt", DateTime.UtcNow);
+            // Log the tracking history record to map the active stateful transaction reservation
+            const string insertHoldSql = $@"
+                INSERT INTO ""{nameof(BalanceDbContext.AccountHolds)}"" (
+                    ""{nameof(AccountHoldEntity.TransactionId)}"",
+                    ""{nameof(AccountHoldEntity.AccountId)}"",
+                    ""{nameof(AccountHoldEntity.Amount)}"",
+                    ""{nameof(AccountHoldEntity.CreatedAt)}"")
+                VALUES (@TransactionId, @AccountId, @Amount, @CreatedAt);";
+            await connection.ExecuteAsync(insertHoldSql, new
+            {
+                message.TransactionId,
+                message.AccountId,
+                message.Amount,
+                CreatedAt = DateTime.UtcNow
+            }, transaction);
 
-            //        await command.ExecuteNonQueryAsync(context.CancellationToken);
-            //    }
-            //}
+            await transaction.CommitAsync(context.CancellationToken);
 
-            logger.LogInformation(
-                "Successfully committed balance hold record to database for TransactionId: {TransactionId}",
-                context.Message.TransactionId);
+            logger.LogInformation("Successfully locked funds for Tx: {TransactionId}", message.TransactionId);
 
-            // Publish dedicated lifecycle event over Kafka instead of using invalid abstract RespondAsync pattern
             await passedProducer.Produce(new HoldAccountBalancePassed
             {
-                TransactionId = context.Message.TransactionId,
+                TransactionId = message.TransactionId,
                 HeldAt = DateTime.UtcNow
             }, context.CancellationToken);
         }
         catch (Exception ex)
         {
-            logger.LogError(
-                ex,
-                "Failed to execute asset reservation pipeline for TransactionId: {TransactionId}. Dispatching failure event.",
-                context.Message.TransactionId);
-
-            // Publish failure event to trigger downstream Saga compensation rules
+            await transaction.RollbackAsync(context.CancellationToken);
+            logger.LogError(ex, "Balance hold failed for Tx: {TransactionId}. Sending failure event.", message.TransactionId);
             await failedProducer.Produce(new HoldAccountBalanceFailed
             {
-                TransactionId = context.Message.TransactionId,
+                TransactionId = message.TransactionId,
                 Reason = ex.Message,
                 FailedAt = DateTime.UtcNow
             }, context.CancellationToken);

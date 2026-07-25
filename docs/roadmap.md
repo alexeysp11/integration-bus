@@ -50,6 +50,21 @@ This document outlines the complete iterative implementation plan for the `integ
     - The Ledger service successfully chains its internal engineering actions via a `Routing Slip`. If a late local activity fails (e.g., Redis timeout), it triggers automated technical compensations in reverse order without breaking global business state.
     - Making a GET request to the polling endpoint correctly reflects the completed financial or compensated failure state of the transaction.
 
+### 📌 Issue #4: High-Load Infrastructure: Account Top-Up API, Bulk Seeding, and Event-Sourced Ledger
+*   **Git Branch:** `feature/issue-4`
+*   **Description:** Transition the wallet balance architecture from state-overwrite to an Event-Sourced/Ledger approach to eliminate heavy DB row locks (`SELECT FOR UPDATE`) under high concurrent load. Additionally, build a high-performance bulk data seeding mechanism to generate a substantial pool of accounts required to sustain continuous load testing without hitting artificial business logic exhaustion limits.
+*   **Todo List:**
+    - [ ] Redesign the Accounting Service storage engine to use an immutable, append-only **Event Sourcing / Ledger** model (`TransactionLogs` table) instead of direct balance cell mutations.
+    - [ ] Implement an efficient state reconstruction mechanism utilizing periodic **Snapshots** (e.g., every 100 entries) to avoid `SUM(Amount)` performance degradation.
+    - [ ] Create a dedicated high-throughput HTTP endpoint `POST /api/v1/accounts/{id}/topup` inside `Accounting.Service` to handle asynchronous balance replenishment.
+    - [ ] Build a high-performance CLI utility or optimized DB script capable of mass-seeding between 100,000 and 500,000 unique, valid test accounts with pre-allocated balances into PostgreSQL.
+    - [ ] Integrate explicit **Idempotency-Key** validation headers across all credit/debit operations to prevent double-spending anomalies under network instabilities during stress testing.
+*   **Definition of Done:**
+    - The database schema is fully migrated to an append-only ledger model, completely removing row-level write locks on the main accounts table.
+    - A bulk-seeding execution completes in under 2 minutes, populating the database with at least 100,000 unique accounts.
+    - High-concurrency benchmark runs demonstrate that multiple parallel workers can write ledger logs for the same or different accounts without throwing deadlocks or serialization failures.
+    - Double-submitted top-up and debit API requests with identical Idempotency-Keys return cached responses without executing secondary writes.
+
 ---
 
 ## 🧪 Stage 2: Reliability Engineering & Integration Testing

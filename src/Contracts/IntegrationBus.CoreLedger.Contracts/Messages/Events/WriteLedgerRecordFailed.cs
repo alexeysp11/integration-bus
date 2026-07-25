@@ -14,4 +14,7 @@ public sealed record WriteLedgerRecordFailed
     /// Gets the infrastructure error summary.
     /// </summary>
     public string Reason { get; init; } = string.Empty;
+
+    // TODO: add XML comment.
+    public DateTime FailedAt { get; init; } = DateTime.UtcNow;
 }

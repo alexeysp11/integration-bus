@@ -2,6 +2,9 @@ using MassTransit;
 using Serilog;
 using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.AccountBalance.Service.DbContexts;
+using Microsoft.EntityFrameworkCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -16,9 +19,8 @@ try
     // Inject Serilog provider infrastructure into internal dependency container
     builder.Services.AddSerilog();
 
-    // Read database connection string footprint to validate Definition of Done
-    string balanceDbConnection = builder.Configuration.GetConnectionString("BalanceDb")
-        ?? throw new InvalidOperationException("BalanceDb connection string is missing.");
+    builder.Services.AddDbContext<BalanceDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("BalanceDb")));
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 
@@ -33,6 +35,9 @@ try
         {
             // Automatically discover and register HoldAccountBalanceConsumer inside IoC container
             rider.AddConsumer<HoldAccountBalanceConsumer>();
+
+            rider.AddProducer<HoldAccountBalancePassed>("account-balance-hold-passed");
+            rider.AddProducer<HoldAccountBalanceFailed>("account-balance-hold-failed");
 
             rider.UsingKafka((context, k) =>
             {
@@ -51,6 +56,13 @@ try
     });
 
     IHost host = builder.Build();
+
+    using (IServiceScope scope = host.Services.CreateScope())
+    {
+        BalanceDbContext dbContext = scope.ServiceProvider.GetRequiredService<BalanceDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)

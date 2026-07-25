@@ -1,6 +1,12 @@
-using MassTransit;
+﻿using MassTransit;
 using Serilog;
 using IntegrationBus.CoreLedger.Service.Consumers;
+using IntegrationBus.CoreLedger.Contracts.Messages.Events;
+using IntegrationBus.CoreLedger.Contracts.Messages.Commands;
+using IntegrationBus.CoreLedger.Service.Models;
+using IntegrationBus.CoreLedger.Service.Activities;
+using IntegrationBus.CoreLedger.Service.DbContexts;
+using Microsoft.EntityFrameworkCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -13,24 +19,44 @@ try
     HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
     builder.Services.AddSerilog();
 
-    string ledgerDbConnection = builder.Configuration.GetConnectionString("LedgerDb")
-        ?? throw new InvalidOperationException("LedgerDb connection string is missing.");
+    builder.Services.AddDbContext<LedgerDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("LedgerDb")));
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 
     builder.Services.AddMassTransit(x =>
     {
-        x.UsingInMemory((context, cfg) => cfg.ConfigureEndpoints(context));
+        x.AddConsumer<LedgerRoutingSlipEventConsumer>();
+
+        // Register Courier routing slip activities inside the dependency container
+        x.AddActivity<WriteAuditTrailActivity, WriteAuditTrailArguments, WriteAuditTrailLog>();
+        x.AddActivity<UpdateCacheActivity, UpdateCacheArguments, UpdateCacheLog>();
+        x.AddExecuteActivity<PublishLedgerCommittedActivity, PublishLedgerCommittedArguments>();
+
+        // Configure the local high-performance memory transit bus for sub-transaction execution
+        x.UsingInMemory((context, cfg) =>
+        {
+            cfg.ReceiveEndpoint("ledger-routing-slip-events", e =>
+            {
+                e.ConfigureConsumer<LedgerRoutingSlipEventConsumer>(context);
+            });
+
+            cfg.ConfigureEndpoints(context);
+        });
 
         x.AddRider(rider =>
         {
             rider.AddConsumer<WriteLedgerRecordConsumer>();
 
+            // Declare the final response producer so the slip can notify the Saga Orchestrator over Kafka
+            rider.AddProducer<WriteLedgerRecordPassed>("core-ledger-record-write-passed");
+            rider.AddProducer<WriteLedgerRecordFailed>("core-ledger-record-write-failed");
+
             rider.UsingKafka((context, k) =>
             {
                 k.Host(kafkaConnectionString);
 
-                k.TopicEndpoint<IntegrationBus.CoreLedger.Contracts.Messages.Commands.WriteLedgerRecord>(
+                k.TopicEndpoint<WriteLedgerRecord>(
                     "core-ledger-record-write",
                     "ledger-service-group",
                     e =>
@@ -42,6 +68,13 @@ try
     });
 
     IHost host = builder.Build();
+
+    using (IServiceScope scope = host.Services.CreateScope())
+    {
+        LedgerDbContext dbContext = scope.ServiceProvider.GetRequiredService<LedgerDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)

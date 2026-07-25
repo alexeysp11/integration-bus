@@ -14,4 +14,7 @@ public sealed record HoldAccountBalanceFailed
     /// Gets the business or technical failure details.
     /// </summary>
     public string Reason { get; init; } = string.Empty;
+
+    // TODO: add xml comment.
+    public DateTime FailedAt { get; init; } = DateTime.UtcNow;
 }

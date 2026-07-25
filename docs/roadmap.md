@@ -41,36 +41,52 @@ This document outlines the complete iterative implementation plan for the `integ
     - [x] Implement the top-level `TransactionSagaStateMachine` in `SagaOrchestrator` to track global financial states (`Started`, `AwaitingBalance`, `AwaitingCompliance`, `Completed`, `Failed`).
     - [x] Implement foundational command consumers across participant services to process global steps: `HoldAccountBalanceConsumer` (with compensation handler) and `CheckComplianceLimitsConsumer`.
     - [x] Create an explicit execution boundary for the Ledger step by hosting a local **MassTransit Courier Routing Slip** inside `CoreLedger.Service`.
-    - [ ] Code three sequential technical activities managed by the Courier Routing Slip: `WriteAuditTrailActivity` (PostgreSQL), `UpdateCacheActivity` (Redis), and `PublishLedgerCommittedActivity` (Outbox notification trigger).
+    - [x] Code three sequential technical activities managed by the Courier Routing Slip: `WriteAuditTrailActivity` (PostgreSQL), `UpdateCacheActivity` (Redis), and `PublishLedgerCommittedActivity` (Outbox notification trigger).
     - [x] Update `IntegrationBus.Processing.Api` to publish the initial `StartTransactionSaga` command to Kafka and return `HTTP 202 Accepted` with a unique `TransactionId` (GUID).
-    - [ ] Implement an explicit polling endpoint `GET /api/transactions/{id}` inside `Processing.Api` that reads the current execution state from the Saga storage layer.
 *   **Definition of Done:**
     - Postman sending a POST transaction receives an immediate `202 Accepted` reply.
     - The global distributed transaction executes sequentially across Kafka topics (Balance -> Compliance -> Ledger).
     - The Ledger service successfully chains its internal engineering actions via a `Routing Slip`. If a late local activity fails (e.g., Redis timeout), it triggers automated technical compensations in reverse order without breaking global business state.
     - Making a GET request to the polling endpoint correctly reflects the completed financial or compensated failure state of the transaction.
 
-### 📌 Issue #4: High-Load Infrastructure: Account Top-Up API, Bulk Seeding, and Event-Sourced Ledger
+### 📌 Issue #4: Accounting Domain: Balance Replenishment & Safe Seed API
 *   **Git Branch:** `feature/issue-4`
-*   **Description:** Transition the wallet balance architecture from state-overwrite to an Event-Sourced/Ledger approach to eliminate heavy DB row locks (`SELECT FOR UPDATE`) under high concurrent load. Additionally, build a high-performance bulk data seeding mechanism to generate a substantial pool of accounts required to sustain continuous load testing without hitting artificial business logic exhaustion limits.
+*   **Description:** Implement baseline balance modification APIs in the Accounting service to facilitate continuous performance verification. Provide an environment-gated bulk seeding mechanism to securely populate test data.
 *   **Todo List:**
-    - [ ] Redesign the Accounting Service storage engine to use an immutable, append-only **Event Sourcing / Ledger** model (`TransactionLogs` table) instead of direct balance cell mutations.
-    - [ ] Implement an efficient state reconstruction mechanism utilizing periodic **Snapshots** (e.g., every 100 entries) to avoid `SUM(Amount)` performance degradation.
-    - [ ] Create a dedicated high-throughput HTTP endpoint `POST /api/v1/accounts/{id}/topup` inside `Accounting.Service` to handle asynchronous balance replenishment.
-    - [ ] Build a high-performance CLI utility or optimized DB script capable of mass-seeding between 100,000 and 500,000 unique, valid test accounts with pre-allocated balances into PostgreSQL.
-    - [ ] Integrate explicit **Idempotency-Key** validation headers across all credit/debit operations to prevent double-spending anomalies under network instabilities during stress testing.
+    - [ ] Create an HTTP endpoint `POST /api/v1/accounts/{id}/topup` inside `Accounting.Service` for balance replenishment.
+    - [ ] Implement an environment-gated `POST /api/v1/accounts/seed` endpoint, active ONLY in non-production profiles, to perform high-speed bulk database seeding for k6 load profiles.
 *   **Definition of Done:**
-    - The database schema is fully migrated to an append-only ledger model, completely removing row-level write locks on the main accounts table.
-    - A bulk-seeding execution completes in under 2 minutes, populating the database with at least 100,000 unique accounts.
-    - High-concurrency benchmark runs demonstrate that multiple parallel workers can write ledger logs for the same or different accounts without throwing deadlocks or serialization failures.
-    - Double-submitted top-up and debit API requests with identical Idempotency-Keys return cached responses without executing secondary writes.
+    - Top-up API correctly updates individual account metrics and balances.
+    - The `/seed` endpoint populates the target database with 100k+ accounts within seconds under the "Testing" environment profile.
+    - The `/seed` route is completely unreachable (returns 404) when the service runs under the "Production" environment profile.
+
+### 📌 Issue #5: Performance Tuning: Append-Only Ledger & Message Inbox/Outbox
+*   **Git Branch:** `feature/issue-5`
+*   **Description:** Eliminate relational database row lock contentions under high concurrent traffic within the Accounting service. Enforce strict processing idempotency at the consumer layer.
+*   **Todo List:**
+    - [ ] Migrate the Accounting balance write-model to an append-only transaction ledger log schema.
+    - [ ] Wire up MassTransit Transactional Outbox and Consumer Inbox components to guarantee exactly-once message processing.
+*   **Definition of Done:**
+    - Load tests running 2000+ RPS against identical accounts do not trigger row-level deadlocks.
+    - Duplicate Kafka messages with identical tracking keys are safely caught and deduplicated by the consumer inbox.
+
+### 📌 Issue #X: API Governance: Semantic Versioning, FluentValidation, and Scalar Integration
+*   **Git Branch:** `feature/api-governance`
+*   **Description:** Establish explicit enterprise-level API design standards across all HTTP-facing microservices. Introduce strict request parsing validation pipelines and formal semantic URL versioning integrated natively with Scalar documentation engines.
+*   **Todo List:**
+    - [ ] Integrate ASP.NET Core API Versioning (`Asp.Versioning.Http`) to support explicit URL layout patterns (`/api/v1/{controller}`).
+    - [ ] Configure FluentValidation filters globally inside Minimal APIs or Controllers to automatically intercept invalid contract body components and return structured `RFC 7807 Problem Details` (HTTP 400).
+    - [ ] Update Scalar configurations to dynamically detect separated API Versions and display grouped interactive documentation tabs.
+*   **Definition of Done:**
+    - Sending an invalid payload to any endpoint automatically bypasses business execution and returns standard `400 Bad Request` with exact field error maps.
+    - Scalar UI lists clean, versioned operational endpoints (`v1`, `v2`) without route duplications or schema rendering bugs.
 
 ---
 
 ## 🧪 Stage 2: Reliability Engineering & Integration Testing
 
-### 📌 Issue #4: Integration Testing for Saga Compensations
-*   **Git Branch:** `test/issue-4`
+### 📌 Issue #6: Integration Testing for Saga Compensations
+*   **Git Branch:** `test/issue-6`
 *   **Description:** Add a comprehensive integration test suite using `WebApplicationFactory` and the MassTransit test harness to ensure that infrastructure and business validation errors trigger the correct automated rollback behaviors.
 *   **Todo List:**
     - [ ] Setup an integration test project using `xUnit` and `FluentAssertions`.
@@ -80,8 +96,8 @@ This document outlines the complete iterative implementation plan for the `integ
     - Test pipeline passes locally.
     - Compensation logic is fully asserted without relying on actual external Docker containers (using local test harness).
 
-### 📌 Issue #5: Introduce Distributed Locks and Rules Engine
-*   **Git Branch:** `feature/issue-5`
+### 📌 Issue #7: Introduce Distributed Locks and Rules Engine
+*   **Git Branch:** `feature/issue-7`
 *   **Description:** Protect the Balance service from concurrency issues and race conditions under heavy load using Redis distributed locks, and migrate compliance validations into an expandable declarative JSON structure.
 *   **Todo List:**
     - [ ] Add a `Redis` instance into the `docker-compose.yml` file.
@@ -95,8 +111,8 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ## 📊 Stage 3: Real-Time Analytical Contour (DWH) & Data Masking
 
-### 📌 Issue #6: Setup Real-Time Analytics Pipeline with Debezium and ClickHouse
-*   **Git Branch:** `feature/issue-6`
+### 📌 Issue #8: Setup Real-Time Analytics Pipeline with Debezium and ClickHouse
+*   **Git Branch:** `feature/issue-8`
 *   **Description:** Build an isolated real-time analytical layer. Capture changes from multiple isolated Postgres databases via WAL logs using Change Data Capture (CDC) without affecting production transactional performance.
 *   **Todo List:**
     - [ ] Add `Debezium (Kafka Connect)`, `ClickHouse`, and `Metabase` containers to `docker-compose.yml`.
@@ -107,8 +123,8 @@ This document outlines the complete iterative implementation plan for the `integ
     - Inserting data into transactional Postgres databases automatically streams data to ClickHouse in real-time with zero manual SQL selects.
     - Metabase successfully connects to ClickHouse pre-aggregated data marts to render financial reports.
 
-### 📌 Issue #7: Prod-to-Test Data Masking Pipeline
-*   **Git Branch:** `feature/issue-7`
+### 📌 Issue #9: Prod-to-Test Data Masking Pipeline
+*   **Git Branch:** `feature/issue-9`
 *   **Description:** Create a secure pipeline that replicates production database transaction streams into a dedicated Test DB while anonymizing sensitive PII data deterministically using salted hashes.
 *   **Todo List:**
     - [ ] Add a target `PostgreSQL-Test` instance to the infrastructure topology.
@@ -121,8 +137,8 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ## 🌐 Stage 4: Cloud-Native Migration (Kubernetes Deployment)
 
-### 📌 Issue #8: Kubernetes and Helm Migration
-*   **Git Branch:** `feature/issue-8`
+### 📌 Issue #10: Kubernetes and Helm Migration
+*   **Git Branch:** `feature/issue-10`
 *   **Description:** Transition away from Docker Compose and prepare the entire platform topology for running inside a scalable, cloud-native orchestration environment.
 *   **Todo List:**
     - [ ] Write optimized, multi-stage `Dockerfile`s for all .NET microservices.
@@ -135,8 +151,8 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ## 🌋 Stage 5: High-Load Simulation & Chaos Engineering
 
-### 📌 Issue #9: Chaos Engineering and Load Testing with k6
-*   **Git Branch:** `test/issue-9`
+### 📌 Issue #11: Chaos Engineering and Load Testing with k6
+*   **Git Branch:** `test/issue-11`
 *   **Description:** Execute the ultimate architectural validation. Bombard the Kubernetes cluster with heavy load and simulate infrastructure crash scenarios to prove system-wide data consistency.
 *   **Todo List:**
     - [ ] Write a javascript load testing script using `k6` to simulate thousands of continuous ledger transactions.

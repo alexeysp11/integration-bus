@@ -94,8 +94,8 @@ This document outlines the complete iterative implementation plan for the `integ
     - State machine database events and Kafka message dispatches execute atomically within a unified transaction boundaries.
     - Intentionally duplicated command messages sent to the orchestrator are caught and dropped by the consumer inbox without causing double-processing defects.
 
-*   **Status:** **`Pending ⏳`**### 📌 API Governance: Semantic Versioning, FluentValidation
-, and Scalar Integration
+### 📌 API Governance: Semantic Versioning, FluentValidation, and Scalar Integration
+*   **Status:** **`Pending ⏳`**
 *   **Git Branch:** `feature/api-governance`
 *   **Description:** Establish explicit enterprise-level API design standards across all HTTP-facing microservices. Introduce strict request parsing validation pipelines and formal semantic URL versioning integrated natively with Scalar documentation engines.
 *   **Todo List:**

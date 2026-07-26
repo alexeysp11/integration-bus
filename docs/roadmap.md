@@ -106,6 +106,16 @@ This document outlines the complete iterative implementation plan for the `integ
     - State machine database events and Kafka message dispatches execute atomically within a unified transaction boundaries.
     - Intentionally duplicated command messages sent to the orchestrator are caught and dropped by the consumer inbox without causing double-processing defects.
 
+### 📌 Infrastructure: Automated Kafka Topic Provisioning Pipeline
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `infra/kafka-auto-provisioning`
+*   **Description:** Eliminate manual infrastructure setup steps when bootstrapping the repository. Configure the application runtime layer to automatically detect, provision, and verify all required Kafka topics with baseline retention and partition policies upon service initialization.
+*   **Todo List:**
+    - [ ] Configure MassTransit Kafka Rider topology options inside service startup configurations to enable automated topic creation.
+    - [ ] Update the local `docker-compose.yml` environment to include explicit dependency checks ensuring applications wait for healthy Kafka cluster states before bootstrapping.
+*   **Definition of Done:**
+    - Executing `docker compose up -d` on a completely clean machine provisions the infrastructure and applications, automatically creating all required operational topics without manual configuration.
+
 ---
 
 ## 🧪 Stage 2: Reliability Engineering & Integration Testing
@@ -195,7 +205,18 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ## 🌋 Stage 5: High-Load Simulation & Chaos Engineering
 
-### 📌 Issue #11: Chaos Engineering and Load Testing with k6
+### 📌 High-Load Optimization: Horizontal Scaling & Kafka Partition Key Routing
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `feature/distributed-scaling-concurrency`
+*   **Description:** Prepare the platform layout for multi-instance horizontal scaling. Configure implicit Kafka message partition keys to guarantee that messages belonging to identical account identifiers always land within the same partition, ensuring strict message ordering across concurrent consumer clusters.
+*   **Todo List:**
+    - [ ] Refactor MassTransit producers and Kafka Riders to explicitly map `AccountId` or `TransactionId` as the Kafka message Partition Key.
+    - [ ] Scale worker services to multiple instances inside `docker-compose.yml` (e.g., `replicas: 3` for Accounting Service) to model a true distributed microservice cluster.
+*   **Definition of Done:**
+    - Active message streams are distributed across distinct service replicas based on partition key hashing.
+    - Concurrent multi-replica transaction benchmarks demonstrate strict message execution ordering per individual financial account context.
+
+### 📌 Chaos Engineering and Load Testing with k6
 *   **Status:** **`Pending ⏳`**
 *   **Git Branch:** `test/chaos-engineering`
 *   **Description:** Execute the ultimate architectural validation. Bombard the Kubernetes cluster with heavy load and simulate infrastructure crash scenarios to prove system-wide data consistency.

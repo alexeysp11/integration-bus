@@ -1,4 +1,5 @@
-﻿using IntegrationBus.Contracts.Http;
+﻿using Asp.Versioning;
+using IntegrationBus.Contracts.Http;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,8 @@ namespace IntegrationBus.Processing.Api.Controllers;
 /// Provides HTTP endpoints for handling and initiating system transaction workflows.
 /// </summary>
 [ApiController]
-[Route("api/ledger/[controller]")]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/ledger/[controller]")]
 public sealed class TransactionController(
     ILogger<TransactionController> logger,
     ITopicProducer<StartTransactionSaga> producer) : ControllerBase

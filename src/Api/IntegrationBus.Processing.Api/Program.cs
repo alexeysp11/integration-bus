@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.Contracts;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
@@ -19,6 +20,25 @@ builder.Services.AddSerilog();
 // Register controllers and native OpenAPI specification engine
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// Configure strict URL Semantic API Versioning
+builder.Services.AddApiVersioning(options =>
+{
+    // If the client doesn't specify a version, fallback to the default one
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+
+    // Report available API versions in response headers (e.g. api-supported-versions: 1.0)
+    options.ReportApiVersions = true;
+    
+    // Enforce that versioning is read strictly from the URL segment template
+    options.ApiVersionReader = new UrlSegmentApiVersionReader();
+})
+.AddApiExplorer(options =>
+{
+    options.GroupNameFormat = "'v'VVV";
+    options.SubstituteApiVersionInUrl = true;
+});
 
 // Initialize MassTransit memory core and target Kafka rider environment
 builder.Services.AddMassTransit(x =>

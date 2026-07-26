@@ -1,0 +1,59 @@
+﻿using IntegrationBus.Contracts.Http;
+using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using MassTransit;
+using Microsoft.AspNetCore.Mvc;
+
+namespace IntegrationBus.Processing.Api.Controllers;
+
+/// <summary>
+/// Provides HTTP endpoints for manipulating and orchestrating financial account metrics.
+/// </summary>
+[ApiController]
+[Route("api/[controller]")]
+public sealed class AccountsController(
+    ILogger<AccountsController> logger,
+    ITopicProducer<TopUpAccountBalance> topUpProducer) : ControllerBase
+{
+    /// <summary>
+    /// Accepts an asynchronous account replenishment request and routes it to the transaction streaming pipeline via Kafka.
+    /// </summary>
+    /// <param name="id">The unique identifier of the target account to replenish.</param>
+    /// <param name="request">The structural payload containing replenishment metrics (amount and currency).</param>
+    /// <param name="cancellationToken">The operational monitoring token injected to track client request execution aborts.</param>
+    /// <returns>A strongly-typed HTTP 202 Accepted payload encapsulating the internal execution tracking reference.</returns>
+    /// <response code="202">Returns the tracking transaction tracking metadata indicating successful infrastructure queue ingestion.</response>
+    /// <response code="400">Returned if the request metadata or body validation constraints fail parsing parameters.</response>
+    [HttpPost("{id:guid}/topup")]
+    [ProducesResponseType(typeof(TopUpAccountResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<TopUpAccountResponse>> TopUpAccount(
+        [FromRoute] Guid id,
+        [FromBody] TopUpAccountRequest request,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Accepting balance replenishment request for AccountId: {AccountId}, Amount: {Amount} {Currency}",
+            id, request.Amount, request.Currency);
+
+        // Map HTTP request components directly into the MassTransit Kafka event/command contract
+        TopUpAccountBalance command = new()
+        {
+            TransactionId = Guid.NewGuid(),
+            AccountId = id,
+            Amount = request.Amount,
+            Currency = request.Currency,
+            TimestampUtc = DateTime.UtcNow
+        };
+
+        // Fire-and-forget: dispatch to Kafka immediately to preserve high-throughput capabilities
+        await topUpProducer.Produce(command, cancellationToken);
+
+        logger.LogInformation("Successfully queued top-up operation message into Kafka for AccountId: {AccountId}", id);
+
+        // Return HTTP 202 Accepted acknowledging that the command has been successfully ingested for processing
+        return Accepted(new TopUpAccountResponse
+        {
+            Message = "Top-up request accepted and is being processed asynchronously.",
+            TrackingTransactionId = command.TransactionId
+        });
+    }
+}

@@ -4,6 +4,8 @@ using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.Compliance.Service.Consumers;
 using IntegrationBus.Compliance.Service.DbContexts;
 using Microsoft.EntityFrameworkCore;
+using IntegrationBus.Contracts;
+using IntegrationBus.Compliance.Contracts.Messages.Commands;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -29,15 +31,15 @@ try
         {
             rider.AddConsumer<CheckComplianceLimitsConsumer>();
 
-            rider.AddProducer<CheckComplianceLimitsPassed>("compliance-limits-check-passed");
-            rider.AddProducer<CheckComplianceLimitsFailed>("compliance-limits-check-failed");
+            rider.AddProducer<CheckComplianceLimitsPassed>(KafkaTopics.ComplianceLimitsCheckPassed);
+            rider.AddProducer<CheckComplianceLimitsFailed>(KafkaTopics.ComplianceLimitsCheckFailed);
 
             rider.UsingKafka((context, k) =>
             {
                 k.Host(kafkaConnectionString);
 
-                k.TopicEndpoint<IntegrationBus.Compliance.Contracts.Messages.Commands.CheckComplianceLimits>(
-                    "compliance-limits-check",
+                k.TopicEndpoint<CheckComplianceLimits>(
+                    KafkaTopics.ComplianceLimitsCheck,
                     "compliance-service-group",
                     e =>
                     {

@@ -7,6 +7,7 @@ using IntegrationBus.CoreLedger.Service.Models;
 using IntegrationBus.CoreLedger.Service.Activities;
 using IntegrationBus.CoreLedger.Service.DbContexts;
 using Microsoft.EntityFrameworkCore;
+using IntegrationBus.Contracts;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -49,15 +50,15 @@ try
             rider.AddConsumer<WriteLedgerRecordConsumer>();
 
             // Declare the final response producer so the slip can notify the Saga Orchestrator over Kafka
-            rider.AddProducer<WriteLedgerRecordPassed>("core-ledger-record-write-passed");
-            rider.AddProducer<WriteLedgerRecordFailed>("core-ledger-record-write-failed");
+            rider.AddProducer<WriteLedgerRecordPassed>(KafkaTopics.CoreLedgerRecordWritePassed);
+            rider.AddProducer<WriteLedgerRecordFailed>(KafkaTopics.CoreLedgerRecordWriteFailed);
 
             rider.UsingKafka((context, k) =>
             {
                 k.Host(kafkaConnectionString);
 
                 k.TopicEndpoint<WriteLedgerRecord>(
-                    "core-ledger-record-write",
+                    KafkaTopics.CoreLedgerRecordWrite,
                     "ledger-service-group",
                     e =>
                     {

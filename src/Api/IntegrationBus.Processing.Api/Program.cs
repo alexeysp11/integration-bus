@@ -1,7 +1,9 @@
+using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.Contracts;
+using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using MassTransit;
 using Scalar.AspNetCore;
 using Serilog;
-using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -24,7 +26,8 @@ builder.Services.AddMassTransit(x =>
     x.AddRider(rider =>
     {
         // Explicitly register the outbound producer footprint for the startup trigger command
-        rider.AddProducer<StartTransactionSaga>("saga-transaction-start");
+        rider.AddProducer<StartTransactionSaga>(KafkaTopics.SagaTransactionStart);
+        rider.AddProducer<TopUpAccountBalance>(KafkaTopics.AccountBalanceTopUp);
 
         rider.UsingKafka((context, k) =>
         {

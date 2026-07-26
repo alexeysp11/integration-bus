@@ -46,7 +46,7 @@ This document serves as the single source of truth for all public HTTP endpoints
 ---
 
 ### 📌 Endpoint B: Account Balance Replenishment
-* **Route:** `POST /api/v1/accounts/{id}/topup`
+* **Route:** `POST /api/accounts/{id}/topup`
 * **Content-Type:** `application/json`
 * **Route Parameter:** `{id}` — Valid target account GUID.
 
@@ -54,7 +54,7 @@ This document serves as the single source of truth for all public HTTP endpoints
 ```json
 {
   "amount": 250.00,
-  "currency": "USD"
+  "currency": 1
 }
 ```
 
@@ -94,11 +94,11 @@ curl -X POST http://localhost:5000/api/ledger/transaction \
 
 #### 2. Triggering a Malformed Input Interception (Validation Test)
 ```bash
-curl -X POST http://localhost:5000/api/v1/accounts/invalid-guid/topup \
+curl -X POST http://localhost:5000/api/accounts/invalid-guid/topup \
   -H "Content-Type: application/json" \
   -d '{
     "amount": -50.00,
-    "currency": "usd"
+    "currency": 1
   }'
 ```
 *Expected Outcome:* The API Gateway routing engine rejects the operation at the edge, returning `HTTP 400 Bad Request` with an RFC 7807 structure listing exact field constraint failures (`id` formatting, negative amount, lowercase currency).

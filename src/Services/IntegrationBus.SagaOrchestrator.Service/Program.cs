@@ -8,6 +8,7 @@ using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Contracts.Messages.Commands;
 using IntegrationBus.CoreLedger.Contracts.Messages.Events;
+using IntegrationBus.Contracts;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -40,10 +41,10 @@ try
             // Bind saga consumers to listen to their respective Kafka topics
             rider.AddConsumersFromNamespaceContaining<TransactionSagaStateMachine>();
 
-            rider.AddProducer<HoldAccountBalance>("account-balance-hold");
-            rider.AddProducer<CheckComplianceLimits>("compliance-limits-check");
-            rider.AddProducer<ReleaseAccountBalance>("account-balance-release");
-            rider.AddProducer<WriteLedgerRecord>("core-ledger-record-write");
+            rider.AddProducer<HoldAccountBalance>(KafkaTopics.AccountBalanceHold);
+            rider.AddProducer<CheckComplianceLimits>(KafkaTopics.ComplianceLimitsCheck);
+            rider.AddProducer<ReleaseAccountBalance>(KafkaTopics.AccountBalanceRelease);
+            rider.AddProducer<WriteLedgerRecord>(KafkaTopics.CoreLedgerRecordWrite);
 
             rider.UsingKafka((context, k) =>
             {
@@ -51,7 +52,7 @@ try
 
                 // Explicitly map incoming Kafka topic endpoint to the Saga instance listener
                 k.TopicEndpoint<StartTransactionSaga>(
-                    "saga-transaction-start",
+                    KafkaTopics.SagaTransactionStart,
                     "saga-orchestrator-group",
                     e =>
                     {
@@ -59,7 +60,7 @@ try
                     });
 
                 k.TopicEndpoint<HoldAccountBalancePassed>(
-                    "account-balance-hold-passed",
+                    KafkaTopics.AccountBalanceHoldPassed,
                     "saga-orchestrator-group",
                     e =>
                     {
@@ -67,7 +68,7 @@ try
                     });
 
                 k.TopicEndpoint<HoldAccountBalanceFailed>(
-                    "account-balance-hold-failed",
+                    KafkaTopics.AccountBalanceHoldFailed,
                     "saga-orchestrator-group",
                     e =>
                     {
@@ -75,7 +76,7 @@ try
                     });
 
                 k.TopicEndpoint<CheckComplianceLimitsPassed>(
-                    "compliance-limits-check-passed",
+                    KafkaTopics.ComplianceLimitsCheckPassed,
                     "saga-orchestrator-group",
                     e =>
                     {
@@ -83,7 +84,7 @@ try
                     });
 
                 k.TopicEndpoint<CheckComplianceLimitsFailed>(
-                    "compliance-limits-check-failed",
+                    KafkaTopics.ComplianceLimitsCheckFailed,
                     "saga-orchestrator-group",
                     e =>
                     {
@@ -91,7 +92,7 @@ try
                     });
 
                 k.TopicEndpoint<WriteLedgerRecordPassed>(
-                    "core-ledger-record-write-passed",
+                    KafkaTopics.CoreLedgerRecordWritePassed,
                     "saga-orchestrator-group",
                     e =>
                     {

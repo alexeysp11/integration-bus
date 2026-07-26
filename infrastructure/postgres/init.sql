@@ -1,5 +1,4 @@
-CREATE DATABASE "integration-bus-gateway";
-CREATE DATABASE "integration-bus-balance";
-CREATE DATABASE "integration-bus-compliance";
-CREATE DATABASE "integration-bus-ledger";
-CREATE DATABASE "integration-bus-saga";
+CREATE DATABASE "accounting_db";
+CREATE DATABASE "compliance_db";
+CREATE DATABASE "ledger_db";
+CREATE DATABASE "saga_db";

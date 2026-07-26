@@ -5,6 +5,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.AccountBalance.Service.DbContexts;
 using Microsoft.EntityFrameworkCore;
+using IntegrationBus.Contracts;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -35,9 +36,13 @@ try
         {
             // Automatically discover and register HoldAccountBalanceConsumer inside IoC container
             rider.AddConsumer<HoldAccountBalanceConsumer>();
+            rider.AddConsumer<TopUpAccountBalanceConsumer>();
 
-            rider.AddProducer<HoldAccountBalancePassed>("account-balance-hold-passed");
-            rider.AddProducer<HoldAccountBalanceFailed>("account-balance-hold-failed");
+            rider.AddProducer<HoldAccountBalancePassed>(KafkaTopics.AccountBalanceHoldPassed);
+            rider.AddProducer<HoldAccountBalanceFailed>(KafkaTopics.AccountBalanceHoldFailed);
+
+            rider.AddProducer<TopUpAccountBalancePassed>(KafkaTopics.AccountBalanceTopUpPassed);
+            rider.AddProducer<TopUpAccountBalanceFailed>(KafkaTopics.AccountBalanceTopUpFailed);
 
             rider.UsingKafka((context, k) =>
             {
@@ -45,11 +50,18 @@ try
 
                 // Bind the incoming Kafka topic to our specific infrastructure consumer
                 k.TopicEndpoint<HoldAccountBalance>(
-                    "account-balance-hold",
+                    KafkaTopics.AccountBalanceHold,
                     "balance-service-group",
                     e =>
                     {
                         e.ConfigureConsumer<HoldAccountBalanceConsumer>(context);
+                    });
+                k.TopicEndpoint<TopUpAccountBalance>(
+                    KafkaTopics.AccountBalanceTopUp,
+                    "balance-service-group",
+                    e =>
+                    {
+                        e.ConfigureConsumer<TopUpAccountBalanceConsumer>(context);
                     });
             });
         });

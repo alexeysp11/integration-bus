@@ -10,6 +10,11 @@
 - [ ] **Stage 4: Cloud-Native Migration (Kubernetes)** — ⏳ *Pending*
 - [ ] **Stage 5: High-Load Simulation & Chaos Engineering** — ⏳ *Pending*
 
+### 🔗 Quick Links & Documentation
+*   🗺️ **[Project Evolution Roadmap](docs/roadmap.md)** — Detailed task breakdowns, Done criteria, and milestones.
+*   🚀 **[API Specifications & Verification Rules](docs/api-specifications.md)** — HTTP contracts, JSON payload schemas, FluentValidation constraints, and manual testing procedures.
+*   📐 **[Git Contribution & Commit Guidelines](CONTRIBUTING.md)** — Semantic commit rules, branching strategy, and issue tracking linkage.
+
 ---
 
 ## 🎯 Project Overview
@@ -109,14 +114,6 @@ This layer handles the lifecycle of synchronous incoming requests and orchestrat
 *   **Data Pipelines & Streaming (CDC):** `Debezium CDC` (Streaming WAL-logs to Kafka) for decoupled data synchronization.
 *   **Analytics & DWH (OLAP):** `ClickHouse` (Pre-calculated OLAP Cubes via `Materialized Views` & `SummingMergeTree`) + `Metabase` for real-time dashboards.
 *   **Observability:** `OpenTelemetry` + `Prometheus` + `Grafana` + `Jaeger` (Distributed Tracing across all microservices).
-
----
-
-## 🪵 Business Logic & Minimal Context
-To avoid getting bogged down in domain engineering, the business logic is stripped down to a bare minimum financial context:
-*   **Endpoint:** `POST /api/ledger/transaction`
-*   **Payload:** `{ "TransactionId": "GUID", "From": "UUID", "To": "UUID", "Amount": 100 }`
-*   **Processing:** The gateway accepts the payload, validates it via `FluentValidation`, and fires a Distributed Saga. Each microservice contains primitive `if/else` checks acting as infrastructure execution mocks.
 
 ---
 

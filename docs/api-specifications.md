@@ -11,7 +11,17 @@ This document serves as the single source of truth for all public HTTP endpoints
 
 ---
 
-## 2. HTTP Endpoint Contracts
+## 2. Interactive API Testing via Scalar
+
+The solution leverages **Scalar** for live, interactive API documentation, schema exploration, and manual request invocation. 
+
+* **Active Documentation Gateway URL:** [https://localhost:7198/scalar/](https://localhost:7198/scalar/)
+
+When the `IntegrationBus.Processing.Api` application is running locally, navigate to this address in your web browser to explore strongly-typed models, execute live requests against the development container grid, and inspect JSON output schemas dynamically.
+
+---
+
+## 3. HTTP Endpoint Contracts
 
 ### 📌 Endpoint A: Execute Distributed Transaction
 * **Route:** `POST /api/ledger/transaction`
@@ -73,7 +83,7 @@ This document serves as the single source of truth for all public HTTP endpoints
 
 ---
 
-## 3. Manual Testing & Postman Verification
+## 4. Manual Testing & Postman Verification
 
 Before spinning up `k6` infrastructure profiles, individual system verification can be performed manually via Postman or `cURL`.
 

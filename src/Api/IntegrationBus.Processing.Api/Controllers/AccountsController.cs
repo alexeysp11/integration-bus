@@ -2,6 +2,7 @@
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
+using Asp.Versioning;
 
 namespace IntegrationBus.Processing.Api.Controllers;
 
@@ -9,7 +10,8 @@ namespace IntegrationBus.Processing.Api.Controllers;
 /// Provides HTTP endpoints for manipulating and orchestrating financial account metrics.
 /// </summary>
 [ApiController]
-[Route("api/[controller]")]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/[controller]")]
 public sealed class AccountsController(
     ILogger<AccountsController> logger,
     ITopicProducer<TopUpAccountBalance> topUpProducer) : ControllerBase
@@ -24,6 +26,8 @@ public sealed class AccountsController(
     /// <response code="202">Returns the tracking transaction tracking metadata indicating successful infrastructure queue ingestion.</response>
     /// <response code="400">Returned if the request metadata or body validation constraints fail parsing parameters.</response>
     [HttpPost("{id:guid}/topup")]
+    [EndpointSummary("Top up an account balance")]
+    [EndpointDescription("Accepts the request body, publishes a TopUpAccountBalance command into Kafka via MassTransit, and returns HTTP 202 Accepted. Actual ledger processing is executed asynchronously.")]
     [ProducesResponseType(typeof(TopUpAccountResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<TopUpAccountResponse>> TopUpAccount(

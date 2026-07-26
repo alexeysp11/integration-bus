@@ -53,20 +53,32 @@ This document outlines the complete iterative implementation plan for the `integ
     - Making a GET request to the polling endpoint correctly reflects the completed financial or compensated failure state of the transaction.
 
 ### 📌 Accounting Domain: Balance Replenishment Endpoint
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/accounting-balance-topup`
 *   **Description:** Implement an explicit HTTP endpoint inside the Accounting service to handle individual account balance replenishment. This core functional feature is required to credit accounts and ensure continuous transaction lifecycles across the distributed system.
 *   **Todo List:**
-    - [ ] Create an HTTP endpoint `POST /api/v1/accounts/{id}/topup` inside `Accounting.Service` to process balance replenishment.
+    - [x] Create an HTTP endpoint `POST /api/accounts/{id}/topup` inside `Accounting.Service` to process balance replenishment.
 *   **Definition of Done:**
     - Sending a valid payload to the top-up API correctly credits the target account and reflects the updated balance in the database.
+
+### 📌 API Governance: Semantic Versioning, FluentValidation, and Scalar Integration
+*   **Status:** **`Done ✅`**
+*   **Git Branch:** `feature/api-governance`
+*   **Description:** Establish explicit enterprise-level API design standards across all HTTP-facing microservices. Introduce strict request parsing validation pipelines and formal semantic URL versioning integrated natively with Scalar documentation engines.
+*   **Todo List:**
+    - [x] Integrate ASP.NET Core API Versioning (`Asp.Versioning.Http`) to support explicit URL layout patterns (`/api/v1/{controller}`).
+    - [x] Configure FluentValidation filters globally inside Minimal APIs or Controllers to automatically intercept invalid contract body components and return structured error response (HTTP 400).
+    - [x] Update Scalar configurations to dynamically detect separated API Versions and display grouped interactive documentation tabs.
+*   **Definition of Done:**
+    - Sending an invalid payload to any endpoint automatically bypasses business execution and returns standard `400 Bad Request` with exact field error maps.
+    - Scalar UI lists clean, versioned operational endpoints (`v1`, `v2`) without route duplications or schema rendering bugs.
 
 ### 📌 Accounting Domain: Environment-Gated Bulk Data Seeding
 *   **Status:** **`Pending ⏳`**
 *   **Git Branch:** `feature/accounting-bulk-seeding`
 *   **Description:** Implement a dedicated bulk seeding execution flow to rapidly populate the local database with a massive pool of test accounts. This utility must be strictly environment-gated to prevent security leaks in production workloads.
 *   **Todo List:**
-    - [ ] Implement a `POST /api/v1/accounts/seed` endpoint inside `Accounting.Service` that leverages high-speed bulk database insertion utilities.
+    - [ ] Implement a `POST /api/accounts/seed` endpoint inside `Accounting.Service` that leverages high-speed bulk database insertion utilities.
     - [ ] Enforce environment configuration boundaries to ensure the seed routing profile is completely omitted when running under production variables.
 *   **Definition of Done:**
     - Invoking the `/seed` endpoint under the non-production profile populates the target database with 100,000+ valid records within seconds.
@@ -93,18 +105,6 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Definition of Done:**
     - State machine database events and Kafka message dispatches execute atomically within a unified transaction boundaries.
     - Intentionally duplicated command messages sent to the orchestrator are caught and dropped by the consumer inbox without causing double-processing defects.
-
-### 📌 API Governance: Semantic Versioning, FluentValidation, and Scalar Integration
-*   **Status:** **`Pending ⏳`**
-*   **Git Branch:** `feature/api-governance`
-*   **Description:** Establish explicit enterprise-level API design standards across all HTTP-facing microservices. Introduce strict request parsing validation pipelines and formal semantic URL versioning integrated natively with Scalar documentation engines.
-*   **Todo List:**
-    - [ ] Integrate ASP.NET Core API Versioning (`Asp.Versioning.Http`) to support explicit URL layout patterns (`/api/v1/{controller}`).
-    - [ ] Configure FluentValidation filters globally inside Minimal APIs or Controllers to automatically intercept invalid contract body components and return structured `RFC 7807 Problem Details` (HTTP 400).
-    - [ ] Update Scalar configurations to dynamically detect separated API Versions and display grouped interactive documentation tabs.
-*   **Definition of Done:**
-    - Sending an invalid payload to any endpoint automatically bypasses business execution and returns standard `400 Bad Request` with exact field error maps.
-    - Scalar UI lists clean, versioned operational endpoints (`v1`, `v2`) without route duplications or schema rendering bugs.
 
 ---
 

@@ -62,13 +62,13 @@ This document outlines the complete iterative implementation plan for the `integ
     - Sending a valid payload to the top-up API correctly credits the target account and reflects the updated balance in the database.
 
 ### 📌 API Governance: Semantic Versioning, FluentValidation, and Scalar Integration
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/api-governance`
 *   **Description:** Establish explicit enterprise-level API design standards across all HTTP-facing microservices. Introduce strict request parsing validation pipelines and formal semantic URL versioning integrated natively with Scalar documentation engines.
 *   **Todo List:**
-    - [ ] Integrate ASP.NET Core API Versioning (`Asp.Versioning.Http`) to support explicit URL layout patterns (`/api/v1/{controller}`).
-    - [ ] Configure FluentValidation filters globally inside Minimal APIs or Controllers to automatically intercept invalid contract body components and return structured `RFC 7807 Problem Details` (HTTP 400).
-    - [ ] Update Scalar configurations to dynamically detect separated API Versions and display grouped interactive documentation tabs.
+    - [x] Integrate ASP.NET Core API Versioning (`Asp.Versioning.Http`) to support explicit URL layout patterns (`/api/v1/{controller}`).
+    - [x] Configure FluentValidation filters globally inside Minimal APIs or Controllers to automatically intercept invalid contract body components and return structured error response (HTTP 400).
+    - [x] Update Scalar configurations to dynamically detect separated API Versions and display grouped interactive documentation tabs.
 *   **Definition of Done:**
     - Sending an invalid payload to any endpoint automatically bypasses business execution and returns standard `400 Bad Request` with exact field error maps.
     - Scalar UI lists clean, versioned operational endpoints (`v1`, `v2`) without route duplications or schema rendering bugs.

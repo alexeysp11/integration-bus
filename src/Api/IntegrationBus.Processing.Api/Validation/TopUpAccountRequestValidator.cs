@@ -31,8 +31,5 @@ public sealed class TopUpAccountRequestValidator : AbstractValidator<TopUpAccoun
     /// Verifies that the monetary value does not contain fractional components beyond 4 decimal places.
     /// </summary>
     private static bool HaveValidFinancialPrecision(decimal amount)
-    {
-        // Multiplying by 10000 and checking if the remainder is 0 isolates any 5+ decimal place fractions
-        return (amount * 10000m) % 1m == 0m;
-    }
+        => amount.Scale <= 4;
 }

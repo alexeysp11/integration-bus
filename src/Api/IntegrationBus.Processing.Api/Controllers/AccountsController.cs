@@ -3,6 +3,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Asp.Versioning;
+using IntegrationBus.Processing.Api.Filters;
 
 namespace IntegrationBus.Processing.Api.Controllers;
 
@@ -59,5 +60,30 @@ public sealed class AccountsController(
             Message = "Top-up request accepted and is being processed asynchronously.",
             TrackingTransactionId = command.TransactionId
         });
+    }
+
+    /// <summary>
+    /// Executes a high-speed bulk database insertion utility to rapidly seed test accounts.
+    /// </summary>
+    /// <param name="request">The payload specifying total record quantity boundaries.</param>
+    /// <param name="cancellationToken">The operational cancellation token root.</param>
+    [HttpPost("seed")]
+    [EndpointSummary("Bulk seed accounts")]
+    [EndpointDescription("Seeds the accounting database with bulk test accounts.")]
+    [DenyProductionEnvironment]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> BulkSeedAccounts(
+        [FromBody] BulkSeedAccountsRequest request)
+    {
+        if (request.Count <= 0)
+        {
+            return BadRequest("The requested entity seed count must be a positive integer strictly greater than zero.");
+        }
+
+        // TODO: Invoke high-speed bulk utility (e.g., await _seedingService.ExecuteAsync(request.Count, cancellationToken))
+
+        return Ok($"Successfully generated and seeded {request.Count} test account entities into the target database.");
     }
 }

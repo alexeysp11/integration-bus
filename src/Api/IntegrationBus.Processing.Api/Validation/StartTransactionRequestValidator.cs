@@ -46,7 +46,5 @@ public sealed class StartTransactionRequestValidator : AbstractValidator<StartTr
     /// Verifies that the monetary value does not contain fractional components beyond 4 decimal places.
     /// </summary>
     private static bool HaveValidFinancialPrecision(decimal amount)
-    {
-        return (amount * 10000m) % 1m == 0m;
-    }
+        => amount.Scale <= 4;
 }

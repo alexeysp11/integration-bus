@@ -8,5 +8,5 @@ public sealed record SeedAccountDatabaseBulkDataPassed
     /// <summary>
     /// Gets the total number of randomized account records successfully written to the persistent store.
     /// </summary>
-    public int SeededQuantity { get; init; }
+    public required int SeededQuantity { get; init; }
 }

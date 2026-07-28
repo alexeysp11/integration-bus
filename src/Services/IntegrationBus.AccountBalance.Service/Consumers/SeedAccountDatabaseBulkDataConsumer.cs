@@ -1,9 +1,9 @@
 ﻿using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
-using MassTransit;
+using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.AccountBalance.Service.Entities;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 
 namespace IntegrationBus.AccountBalance.Service.Consumers;
 
@@ -74,7 +74,10 @@ public sealed class SeedAccountDatabaseBulkDataConsumer(
                 }
             }
 
-            SeedAccountDatabaseBulkDataPassed passedEvent = new();
+            SeedAccountDatabaseBulkDataPassed passedEvent = new()
+            {
+                SeededQuantity = totalToGenerate,
+            };
             await passedProducer.Produce(passedEvent, context.CancellationToken);
 
             logger.LogInformation("Flawlessly completed database seeding operation for {TotalCount} accounts. Outcome event dispatched.", totalToGenerate);
@@ -84,6 +87,7 @@ public sealed class SeedAccountDatabaseBulkDataConsumer(
             logger.LogError(ex, "A critical runtime failure occurred while executing database batch ingestion for seeding operation.");
             SeedAccountDatabaseBulkDataFailed failedEvent = new()
             {
+                SeededQuantity = totalToGenerate,
                 FailureReason = ex.Message
             };
             await failedProducer.Produce(failedEvent, context.CancellationToken);

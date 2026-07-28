@@ -74,12 +74,12 @@ This document outlines the complete iterative implementation plan for the `integ
     - Scalar UI lists clean, versioned operational endpoints (`v1`, `v2`) without route duplications or schema rendering bugs.
 
 ### 📌 Accounting Domain: Environment-Gated Bulk Data Seeding
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/accounting-bulk-seeding`
 *   **Description:** Implement a dedicated bulk seeding execution flow to rapidly populate the local database with a massive pool of test accounts. This utility must be strictly environment-gated to prevent security leaks in production workloads.
 *   **Todo List:**
-    - [ ] Implement a `POST /api/accounts/seed` endpoint inside `Accounting.Service` that leverages high-speed bulk database insertion utilities.
-    - [ ] Enforce environment configuration boundaries to ensure the seed routing profile is completely omitted when running under production variables.
+    - [x] Implement a `POST /api/accounts/seed` endpoint inside `Accounting.Api` that leverages high-speed bulk database insertion utilities.
+    - [x] Enforce environment configuration boundaries to ensure the seed routing profile is completely omitted when running under production variables.
 *   **Definition of Done:**
     - Invoking the `/seed` endpoint under the non-production profile populates the target database with 100,000+ valid records within seconds.
     - The `/seed` route is completely unreachable and returns an HTTP 404 error when the environment profile is set to "Production".

@@ -15,7 +15,8 @@ namespace IntegrationBus.Processing.Api.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public sealed class AccountsController(
     ILogger<AccountsController> logger,
-    ITopicProducer<TopUpAccountBalance> topUpProducer) : ControllerBase
+    ITopicProducer<TopUpAccountBalance> topUpProducer,
+    ITopicProducer<SeedAccountDatabaseBulkData> seedProducer) : ControllerBase
 {
     /// <summary>
     /// Accepts an asynchronous account replenishment request and routes it to the transaction streaming pipeline via Kafka.
@@ -63,7 +64,7 @@ public sealed class AccountsController(
     }
 
     /// <summary>
-    /// Executes a high-speed bulk database insertion utility to rapidly seed test accounts.
+    /// Dispatches a high-speed bulk database insertion command into Kafka to rapidly seed test accounts in the background.
     /// </summary>
     /// <param name="request">The payload specifying total record quantity boundaries.</param>
     /// <param name="cancellationToken">The operational cancellation token root.</param>
@@ -71,19 +72,27 @@ public sealed class AccountsController(
     [EndpointSummary("Bulk seed accounts")]
     [EndpointDescription("Seeds the accounting database with bulk test accounts.")]
     [DenyProductionEnvironment]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> BulkSeedAccounts(
-        [FromBody] BulkSeedAccountsRequest request)
+        [FromBody] BulkSeedAccountsRequest request,
+        CancellationToken cancellationToken)
     {
         if (request.Count <= 0)
         {
             return BadRequest("The requested entity seed count must be a positive integer strictly greater than zero.");
         }
 
-        // TODO: Invoke high-speed bulk utility (e.g., await _seedingService.ExecuteAsync(request.Count, cancellationToken))
+        SeedAccountDatabaseBulkData command = new()
+        {
+            RecordQuantity = request.Count
+        };
 
-        return Ok($"Successfully generated and seeded {request.Count} test account entities into the target database.");
+        // Asynchronously publish the command payload directly to the Kafka topic
+        await seedProducer.Produce(command, cancellationToken);
+
+        // Return HTTP 202 Accepted to signal that processing has been successfully scheduled in the background
+        return Accepted();
     }
 }

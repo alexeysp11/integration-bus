@@ -3,6 +3,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Asp.Versioning;
+using IntegrationBus.Processing.Api.Filters;
 
 namespace IntegrationBus.Processing.Api.Controllers;
 
@@ -14,7 +15,8 @@ namespace IntegrationBus.Processing.Api.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public sealed class AccountsController(
     ILogger<AccountsController> logger,
-    ITopicProducer<TopUpAccountBalance> topUpProducer) : ControllerBase
+    ITopicProducer<TopUpAccountBalance> topUpProducer,
+    ITopicProducer<SeedAccountDatabaseBulkData> seedProducer) : ControllerBase
 {
     /// <summary>
     /// Accepts an asynchronous account replenishment request and routes it to the transaction streaming pipeline via Kafka.
@@ -59,5 +61,38 @@ public sealed class AccountsController(
             Message = "Top-up request accepted and is being processed asynchronously.",
             TrackingTransactionId = command.TransactionId
         });
+    }
+
+    /// <summary>
+    /// Dispatches a high-speed bulk database insertion command into Kafka to rapidly seed test accounts in the background.
+    /// </summary>
+    /// <param name="request">The payload specifying total record quantity boundaries.</param>
+    /// <param name="cancellationToken">The operational cancellation token root.</param>
+    [HttpPost("seed")]
+    [EndpointSummary("Bulk seed accounts")]
+    [EndpointDescription("Seeds the accounting database with bulk test accounts.")]
+    [DenyProductionEnvironment]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> BulkSeedAccounts(
+        [FromBody] BulkSeedAccountsRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Count <= 0)
+        {
+            return BadRequest("The requested entity seed count must be a positive integer strictly greater than zero.");
+        }
+
+        SeedAccountDatabaseBulkData command = new()
+        {
+            RecordQuantity = request.Count
+        };
+
+        // Asynchronously publish the command payload directly to the Kafka topic
+        await seedProducer.Produce(command, cancellationToken);
+
+        // Return HTTP 202 Accepted to signal that processing has been successfully scheduled in the background
+        return Accepted();
     }
 }

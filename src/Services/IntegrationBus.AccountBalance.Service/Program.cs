@@ -37,12 +37,16 @@ try
             // Automatically discover and register HoldAccountBalanceConsumer inside IoC container
             rider.AddConsumer<HoldAccountBalanceConsumer>();
             rider.AddConsumer<TopUpAccountBalanceConsumer>();
+            rider.AddConsumer<SeedAccountDatabaseBulkDataConsumer>();
 
             rider.AddProducer<HoldAccountBalancePassed>(KafkaTopics.AccountBalanceHoldPassed);
             rider.AddProducer<HoldAccountBalanceFailed>(KafkaTopics.AccountBalanceHoldFailed);
 
             rider.AddProducer<TopUpAccountBalancePassed>(KafkaTopics.AccountBalanceTopUpPassed);
             rider.AddProducer<TopUpAccountBalanceFailed>(KafkaTopics.AccountBalanceTopUpFailed);
+
+            rider.AddProducer<SeedAccountDatabaseBulkDataPassed>(KafkaTopics.AccountDatabaseSeedPassed);
+            rider.AddProducer<SeedAccountDatabaseBulkDataFailed>(KafkaTopics.AccountDatabaseSeedFailed);
 
             rider.UsingKafka((context, k) =>
             {
@@ -62,6 +66,13 @@ try
                     e =>
                     {
                         e.ConfigureConsumer<TopUpAccountBalanceConsumer>(context);
+                    });
+                k.TopicEndpoint<SeedAccountDatabaseBulkData>(
+                    KafkaTopics.AccountDatabaseSeed,
+                    "balance-service-group",
+                    e =>
+                    {
+                        e.ConfigureConsumer<SeedAccountDatabaseBulkDataConsumer>(context);
                     });
             });
         });

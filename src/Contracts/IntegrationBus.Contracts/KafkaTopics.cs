@@ -26,6 +26,21 @@ public static class KafkaTopics
     public const string AccountBalanceTopUpFailed = "accounting-balance-topup-failed";
 
     /// <summary>
+    /// Inbound command orchestration stream topic utilized to trigger environment-gated database population utilities.
+    /// </summary>
+    public const string AccountDatabaseSeed = "account-database-seed";
+
+    /// <summary>
+    /// Event stream topic signaling that the massive test account generation sequence and database batch ingestion completed successfully.
+    /// </summary>
+    public const string AccountDatabaseSeedPassed = "account-database-seed-passed";
+
+    /// <summary>
+    /// Event stream topic signaling a processing, serialization, or database persistence boundary runtime failure during an account database seeding operation.
+    /// </summary>
+    public const string AccountDatabaseSeedFailed = "account-database-seed-failed";
+
+    /// <summary>
     /// Inbound command topic mapping requests to execute a pessimistic asset reservation hold on an account balance.
     /// </summary>
     public const string AccountBalanceHold = "account-balance-hold";

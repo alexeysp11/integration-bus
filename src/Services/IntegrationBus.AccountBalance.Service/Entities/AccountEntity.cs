@@ -1,22 +1,24 @@
-﻿namespace IntegrationBus.AccountBalance.Service.Entities;
+﻿using IntegrationBus.Contracts.Enums;
+
+namespace IntegrationBus.AccountBalance.Service.Entities;
 
 /// <summary>
-/// Represents the persistent entity model mapped to a user or system financial account containing real time balance value state trackers.
+/// Represents the root aggregate identity reference for a financial account within the event-sourced ecosystem.
 /// </summary>
 public sealed class AccountEntity
 {
     /// <summary>
-    /// Gets or sets the primary unique identifier for the target account record ledger.
+    /// Gets or sets the primary unique identifier for the target financial account root.
     /// </summary>
     public Guid Id { get; set; }
 
     /// <summary>
-    /// Gets or sets the exact current liquid asset capacity allocation stored within the explicit financial account context.
+    /// Gets the string identifier of the transactional currency code tracking the underlying asset.
     /// </summary>
-    public decimal Balance { get; set; }
+    public Currency Currency { get; init; } = Currency.None;
 
     /// <summary>
-    /// Gets or sets the temporal checkpoint tracking when the entity instance balance schema values were last modified.
+    /// Gets or sets the temporal timestamp tracking exactly when this specific entity aggregate context was initialized.
     /// </summary>
-    public DateTime UpdatedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

@@ -44,18 +44,14 @@ public sealed class SeedAccountDatabaseBulkDataConsumer(
 
             for (int i = 0; i < totalToGenerate; i++)
             {
-                decimal randomizedWhole = randomEngine.Next(10, 10000);
-                decimal randomizedFractional = randomEngine.Next(0, 100) / 100.00m;
-                decimal accountBalance = randomizedWhole + randomizedFractional;
-
                 int temporalOffsetHours = randomEngine.Next(0, 8760);
                 DateTime historicalTimestamp = currentUtcTime.AddHours(-temporalOffsetHours);
 
                 AccountEntity uniqueAccount = new()
                 {
                     Id = Guid.NewGuid(),
-                    Balance = accountBalance,
-                    UpdatedAt = historicalTimestamp
+                    CreatedAt = historicalTimestamp,
+                    Currency = context.Message.Currency
                 };
 
                 executionBatch.Add(uniqueAccount);

@@ -45,6 +45,7 @@ try
             rider.AddProducer<CheckComplianceLimits>(KafkaTopics.ComplianceLimitsCheck);
             rider.AddProducer<ReleaseAccountBalance>(KafkaTopics.AccountBalanceRelease);
             rider.AddProducer<WriteLedgerRecord>(KafkaTopics.CoreLedgerRecordWrite);
+            rider.AddProducer<ConfirmAccountBalance>(KafkaTopics.AccountBalanceConfirm);
 
             rider.UsingKafka((context, k) =>
             {
@@ -93,6 +94,14 @@ try
 
                 k.TopicEndpoint<WriteLedgerRecordPassed>(
                     KafkaTopics.CoreLedgerRecordWritePassed,
+                    "saga-orchestrator-group",
+                    e =>
+                    {
+                        e.ConfigureSaga<TransactionSagaInstance>(context);
+                    });
+
+                k.TopicEndpoint<WriteLedgerRecordFailed>(
+                    KafkaTopics.CoreLedgerRecordWriteFailed,
                     "saga-orchestrator-group",
                     e =>
                     {

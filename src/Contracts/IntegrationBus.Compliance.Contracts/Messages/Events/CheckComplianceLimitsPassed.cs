@@ -10,6 +10,8 @@ public sealed record CheckComplianceLimitsPassed
     /// </summary>
     public Guid TransactionId { get; init; }
 
-    // TODO: add xml comment.
+    /// <summary>
+    /// Gets the strict coordinated universal temporal timestamp tracking exactly when the corporate compliance verification sequence succeeded.
+    /// </summary>
     public DateTime VerifiedAt { get; init; } = DateTime.UtcNow;
 }

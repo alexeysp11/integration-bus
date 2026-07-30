@@ -5,7 +5,6 @@ using IntegrationBus.Processing.Api.Extensions;
 using IntegrationBus.Processing.Api.Validation;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using MassTransit;
-using Microsoft.AspNetCore.Mvc;
 using Scalar.AspNetCore;
 using Serilog;
 

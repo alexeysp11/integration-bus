@@ -73,11 +73,11 @@ public sealed class TopUpAccountBalanceConsumer(
         try
         {
             // 1. Verify target account existence and enforce strict currency compatibility constraints
-            int? accountCurrencyValue = await connection.QuerySingleOrDefaultAsync<int?>(
+            int accountCurrencyValue = await connection.QuerySingleOrDefaultAsync<int?>(
                     GetAccountMetadataSql, new { message.AccountId }, transaction)
                 ?? throw new InvalidOperationException($"Target account {message.AccountId} was not found within the ledger context registration boundaries.");
-            
-            Currency accountCurrency = (Currency)accountCurrencyValue.Value;
+
+            Currency accountCurrency = (Currency)accountCurrencyValue;
             if (accountCurrency != message.Currency)
             {
                 throw new InvalidOperationException(

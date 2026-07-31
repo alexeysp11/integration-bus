@@ -97,7 +97,10 @@ public sealed class HoldAccountBalanceConsumer(
 
             // 2. Delegate real-time liquid balance capacity calculation directly to the isolated reconstruction engine
             decimal currentAvailableBalance = await stateReconstructor.ReconstructAvailableBalanceAsync(
-                message.AccountFromId, connection, transaction);
+                message.AccountFromId,
+                connection,
+                transaction,
+                context.CancellationToken);
 
             if (currentAvailableBalance < message.Amount)
             {

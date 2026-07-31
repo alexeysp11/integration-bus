@@ -1,11 +1,13 @@
 using MassTransit;
 using Serilog;
-using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.AccountBalance.Service.BackgroundServices;
+using IntegrationBus.AccountBalance.Service.Configurations;
+using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Service.DbContexts;
-using Microsoft.EntityFrameworkCore;
 using IntegrationBus.Contracts;
+using Microsoft.EntityFrameworkCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -22,6 +24,11 @@ try
 
     builder.Services.AddDbContext<BalanceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("BalanceDb")));
+
+    builder.Services.Configure<SnapshotEngineOptions>(
+        builder.Configuration.GetSection("SnapshotEngine"));
+
+    builder.Services.AddHostedService<SnapshotGenerationEngine>();
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 

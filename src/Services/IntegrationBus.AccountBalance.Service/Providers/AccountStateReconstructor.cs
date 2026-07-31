@@ -1,32 +1,46 @@
-﻿using IntegrationBus.AccountBalance.Service.DbContexts;
+﻿using System.Data.Common;
+using Dapper;
+using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.AccountBalance.Service.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace IntegrationBus.AccountBalance.Service.Providers;
 
 /// <summary>
-/// Provides a high-performance state compilation engine that reconstructs financial balance entities through optimized ledger aggregations.
+/// Reconstructs the actual state ledger balances by applying immutable event log sequences onto checkpoint snapshots.
 /// </summary>
-public sealed class AccountStateReconstructor(BalanceDbContext dbContext) : IAccountStateReconstructor
+public sealed class AccountStateReconstructor : IAccountStateReconstructor
 {
-    /// <inheritdoc />
-    public async Task<decimal> ReconstructCurrentBalanceAsync(Guid accountId, CancellationToken cancellationToken)
+    private const string SnapshotSql = $@"
+        SELECT ""{nameof(AccountSnapshotEntity.SequenceNumber)}"", ""{nameof(AccountSnapshotEntity.SnapshotBalance)}""
+        FROM ""{nameof(BalanceDbContext.Snapshots)}""
+        WHERE ""{nameof(AccountSnapshotEntity.AccountId)}"" = @AccountId
+        ORDER BY ""{nameof(AccountSnapshotEntity.SequenceNumber)}"" DESC
+        LIMIT 1;";
+
+    private const string AggregateDeltasSql = $@"
+        SELECT COALESCE(SUM(""{nameof(AccountJournalEntryEntity.AmountDelta)}""), 0)
+        FROM ""{nameof(BalanceDbContext.JournalEntries)}""
+        WHERE ""{nameof(AccountJournalEntryEntity.SourceAccountId)}"" = @AccountId 
+          AND ""{nameof(AccountJournalEntryEntity.SequenceNumber)}"" > @LatestSnapshotSequence;";
+
+    public async Task<decimal> ReconstructAvailableBalanceAsync(
+        Guid accountId,
+        DbConnection connection,
+        DbTransaction transaction,
+        CancellationToken cancellationToken = default)
     {
-        // 1. Retrieve the latest available snapshot computation checkpoint for the target account record boundary
-        AccountSnapshotEntity? latestSnapshot = await dbContext.Snapshots
-            .Where(s => s.AccountId == accountId)
-            .OrderByDescending(s => s.SequenceNumber)
-            .FirstOrDefaultAsync(cancellationToken);
+        // 1. Fetch the absolute latest snapshot tracking state metadata safely wrapped with cancellation boundaries
+        CommandDefinition snapshotCommand = new(SnapshotSql, new { AccountId = accountId }, transaction, cancellationToken: cancellationToken);
+        (long SequenceNumber, decimal SnapshotBalance)? snapshot = await connection.QuerySingleOrDefaultAsync<(long SequenceNumber, decimal SnapshotBalance)?>(snapshotCommand);
 
-        long startingSequenceNumber = latestSnapshot?.SequenceNumber ?? 0;
-        decimal baseBalance = latestSnapshot?.SnapshotBalance ?? 0.00m;
+        long latestSnapshotSequence = snapshot?.SequenceNumber ?? 0;
+        decimal baseBalance = snapshot?.SnapshotBalance ?? 0.00m;
 
-        // 2. Query and aggregate all subsequent append-only ledger transaction delta records generated past the snapshot checkpoint index
-        decimal accumulatedDelta = await dbContext.JournalEntries
-            .Where(j => j.SourceAccountId == accountId && j.SequenceNumber > startingSequenceNumber)
-            .SumAsync(j => j.AmountDelta, cancellationToken);
+        // 2. Fetch and aggregate all streaming delta variations recorded past the snapshot with cancellation mapping
+        CommandDefinition deltasCommand = new(AggregateDeltasSql, new { AccountId = accountId, LatestSnapshotSequence = latestSnapshotSequence }, transaction, cancellationToken: cancellationToken);
+        decimal streamingDeltas = await connection.QuerySingleAsync<decimal>(deltasCommand);
 
-        // 3. Compile the current exact operational balance value by merging the historical checkpoint base with streaming deltas
-        return baseBalance + accumulatedDelta;
+        // 3. Return the absolute formulated capacity valuation
+        return baseBalance + streamingDeltas;
     }
 }

@@ -8,6 +8,7 @@ using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.Contracts;
 using Microsoft.EntityFrameworkCore;
+using IntegrationBus.AccountBalance.Service.Providers;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -24,6 +25,8 @@ try
 
     builder.Services.AddDbContext<BalanceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("BalanceDb")));
+
+    builder.Services.AddScoped<IAccountStateReconstructor, AccountStateReconstructor>();
 
     builder.Services.Configure<SnapshotEngineOptions>(
         builder.Configuration.GetSection("SnapshotEngine"));

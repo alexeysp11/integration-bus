@@ -57,6 +57,8 @@ This layer handles the lifecycle of synchronous incoming requests and orchestrat
   └─► [ Redis + Postgres DB ]     └─► [ Postgres Comp DB ]        └─► [ Postgres Ledger DB ]
 ```
 
+*Note on Storage Engines:* The **Account Balance Service** has been completely migrated from a legacy CRUD model to **Event Sourcing architecture**. All financial positions are derived dynamically from append-only logs wrapped with absolute checkpoint state snapshots to achieve zero persistent row lock contention.
+
 ### 2. Real-Time Analytical Contour (OLAP)
 
 *Note: This pipeline is executed symmetrically for all three transactional databases (`Balance DB`, `Compliance DB`, and `Ledger DB`). The diagram below illustrates the flow for a single database instance.*
@@ -122,8 +124,8 @@ This layer handles the lifecycle of synchronous incoming requests and orchestrat
 The system implements the **Saga Orchestration** pattern using **MassTransit Courier**. Transactions are executed as an immutable series of activities forwarded through dedicated Kafka topics.
 
 ### The Financial Transfer Saga Steps:
-1.  **`HoldMoneyActivity`** (`Account Balance Service`): Deducts the amount from the sender's balance using Redis distributed locks.
-    *   *Compensate:* Returns the money if subsequent steps fail (`Balance += Amount`).
+1.  **`HoldMoneyActivity`** (`Account Balance Service`): Appends an immutable negative delta hold entry into the event-sourced journal stream log.
+    - *Compensate:* Appends a positive neutralizing cancellation entry to instantly restore disposable capacity limits ( JournalEntryType.Cancelled ).
 2.  **`ComplianceCheckActivity`** (`Compliance Service`): Evaluates transaction limits and risk levels using declarative `RulesEngine` via a local JSON config.
     *   *Compensate:* No-op (logs compliance security alert).
 3.  **`CommitLedgerActivity`** (`Core Ledger Service`): Writes the immutable audit trail record into the core database.
@@ -160,12 +162,15 @@ To align with high-performance production constraints and maintain boundary safe
 
 Open **Kafka UI** at `http://localhost:8080`, navigate to the **Topics** section, click **Add a Topic**, and create the following entities utilizing a baseline layout (1 Partition, Replication Factor 1):
 
-* `saga-transaction-start` — Ingests initialization trigger commands dispatched from the API layer.
-* `account-balance-hold` — Dispatched by the orchestrator to request asset locks inside the Balance context.
-* `account-balance-hold-passed` — Callback event signaling absolute success from the Balance worker.
-* `account-balance-hold-failed` — Callback event signaling validation or technical bounds violations from the Balance worker.
-* `compliance-limits-check` — Dispatched to trigger regulatory velocity verification steps.
-* `core-ledger-record-write` — Dispatched to trigger the immutable financial ledger audit trailing records.
+* `saga-transaction-start` — Ingests initialization trigger commands dispatched from the API gateway layer to bootstrap the orchestration state machine lifecycle.
+* `account-balance-hold` — Dispatched by the saga orchestrator to request asset locks and evaluate disposable capacity limits inside the event-sourced Balance context.
+* `account-balance-hold-passed` — Callback telemetry event signaling that the asset hold allocation was successfully verified and appended to the ledger journal stream.
+* `account-balance-hold-failed` — Callback event signaling validation stoppage, insufficient funds, or technical bounds violations encountered during the asset hold sequence.
+* `account-balance-confirm` — Command emitted by the orchestrator directing the Accounting domain to execute double-entry ledger updates and permanently finalize the frozen balance.
+* `account-balance-confirm-passed` — Success event signaling that the double-entry confirmation logs were atomically applied across both counterparties.
+* `account-balance-confirm-failed` — Critical breakdown event indicating that concurrency anomalies or storage failures stopped the final double-entry bookkeeping step.
+* `compliance-limits-check` — Dispatched by the orchestrator to trigger asynchronous regulatory velocity checks and fraud risk profile evaluations.
+* `core-ledger-record-write` — Dispatched to commit the absolute, unified transaction audit trail footprint into the centralized financial ledger database.
 
 ---
 

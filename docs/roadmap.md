@@ -89,8 +89,8 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Git Branch:** `feature/accounting-event-sourcing`
 *   **Description:** Refactor the Accounting service balance modification layer. Migrate from a state-overwrite write model to an immutable, append-only event ledger log schema to remove persistent database row lock contentions.
 *   **Todo List:**
-    - [ ] Redesign the database schema to store balances as an immutable sequence of ledger modification log records instead of cell-level balance value changes.
-    - [ ] Implement an optimized current state reconstruction strategy utilizing periodic balance snapshots.
+    - [x] Redesign the database schema to store balances as an immutable sequence of ledger modification log records instead of cell-level balance value changes.
+    - [x] Implement an optimized current state reconstruction strategy utilizing periodic balance snapshots.
 *   **Definition of Done:**
     - Balance mutations are successfully persisted as immutable log sequences.
     - Retrieving an account balance correctly reconstructs the net state using the snapshot combined with subsequent append-only entries.

@@ -116,6 +116,19 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Definition of Done:**
     - Executing `docker compose up -d` on a completely clean machine provisions the infrastructure and applications, automatically creating all required operational topics without manual configuration.
 
+### 📌 Infrastructure: Distributed Tracing and Saga Observability
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `infra/saga-distributed-tracing`
+*   **Description:** Implement comprehensive distributed tracing and correlation tracking across the microservice ecosystem. Integrate OpenTelemetry into MassTransit and configure a centralized Jaeger telemetry collection collector to enable granular, real-time observability of distributed transaction saga execution paths and latency profiles.
+*   **Todo List:**
+    - [ ] Integrate OpenTelemetry SDK into `SagaOrchestrator.Service` and `Accounting.Service`, enabling MassTransit native source tracing generation listeners.
+    - [ ] Configure the serilog/microsoft logging pipeline across all services to automatically enrich structural log contexts with active OpenTelemetry `TraceId` and `SpanId` properties.
+    - [ ] Update the central `docker-compose.yml` configuration suite to provision and network a baseline Jaeger multi-container deployment architecture tracking standard OTLP/gRPC export streams.
+*   **Definition of Done:**
+    - Triggering a new `StartTransactionSaga` command initiates a distinct unified trace session context that maps every subsequent message hop flawlessly.
+    - Centralized Jaeger UI visualizes interactive transaction sequence waterfalls showing exactly where a distributed saga stalls or errors out.
+    - Searching a raw `CorrelationId` string inside application logs instantly correlates and brings up the multi-service execution footprints.
+
 ---
 
 ## 🧪 Stage 2: Reliability Engineering & Integration Testing

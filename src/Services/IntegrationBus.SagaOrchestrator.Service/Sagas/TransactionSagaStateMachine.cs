@@ -28,6 +28,8 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
         Event(() => CheckComplianceLimitsFailed, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => WriteLedgerRecordPassed, x => x.CorrelateById(context => context.Message.TransactionId));
         Event(() => WriteLedgerRecordFailed, x => x.CorrelateById(context => context.Message.TransactionId));
+        Event(() => ConfirmAccountBalancePassed, x => x.CorrelateById(context => context.Message.TransactionId));
+        Event(() => ConfirmAccountBalanceFailed, x => x.CorrelateById(context => context.Message.TransactionId));
 
         Initially(
             When(StartTransactionSaga)
@@ -72,17 +74,33 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
                 .TransitionTo(Failed));
 
         During(AwaitingLedgerCommit,
-            // Terminal success state. The local routing slip inside the ledger service finished successfully.
+            // Core ledger write was successful; advance to commit actual money balances inside Accounting service
             When(WriteLedgerRecordPassed)
+                .Activity(x => x.OfType<ConfirmAccountBalanceActivity>())
+                .TransitionTo(AwaitingAccountingCommit),
+
+            // Technical failure state. A late activity inside the local routing slip crashed (e.g., Redis timeout).
+            // Triggers downstream technical rollbacks to clear locked states.
+            When(WriteLedgerRecordFailed)
+                .Then(context =>
+                {
+                    context.Saga.ErrorMessage = context.Message.Reason;
+                })
+                .Activity(x => x.OfType<ReleaseAccountBalanceActivity>())
+                .TransitionTo(Failed));
+
+        During(AwaitingAccountingCommit,
+            // Terminal success state. Accounting double-entry bookkeeping finalized without exceptions.
+            When(ConfirmAccountBalancePassed)
                 .Then(context =>
                 {
                     context.Saga.UpdatedAt = DateTime.UtcNow;
                 })
                 .TransitionTo(Completed),
 
-            // Technical failure state. A late activity inside the local routing slip crashed (e.g., Redis timeout).
-            // Triggers downstream technical rollbacks to clear locked states.
-            When(WriteLedgerRecordFailed)
+            // Financial rollback state. Concurrency violation or storage crash happened during the Accounting commit step.
+            // Triggers downstream technical rollbacks to restore balances.
+            When(ConfirmAccountBalanceFailed)
                 .Then(context =>
                 {
                     context.Saga.ErrorMessage = context.Message.Reason;
@@ -106,9 +124,19 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// </summary>
     public State AwaitingLedgerCommit { get; private set; } = null!;
 
+    /// <summary>
+    /// Gets the state definition representing that the saga is waiting for the Accounting service to finalize double-entry ledger updates.
+    /// </summary>
+    public State AwaitingAccountingCommit { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the terminal state definition representing a successfully executed and finalized distributed transaction saga lifetime.
+    /// </summary>
     public State Completed { get; private set; } = null!;
 
-    // TODO: add xml comment.
+    /// <summary>
+    /// Gets the terminal state definition representing a structurally aborted or failed distributed transaction saga lifecycle context.
+    /// </summary>
     public State Failed { get; private set; } = null!;
 
     /// <summary>
@@ -136,6 +164,23 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// </summary>
     public Event<CheckComplianceLimitsFailed> CheckComplianceLimitsFailed { get; private set; } = null!;
 
+    /// <summary>
+    /// Gets the state machine trigger event signaled when the underlying core ledger pipeline successfully appends and indexes the transaction record entry.
+    /// </summary>
     public Event<WriteLedgerRecordPassed> WriteLedgerRecordPassed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the state machine trigger event signaled when the underlying core ledger pipeline encounters data constraints or infrastructure exceptions.
+    /// </summary>
     public Event<WriteLedgerRecordFailed> WriteLedgerRecordFailed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the trigger event configuration indicating that the Accounting service successfully finalized the asset transfer entries.
+    /// </summary>
+    public Event<ConfirmAccountBalancePassed> ConfirmAccountBalancePassed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the trigger event configuration indicating that the Accounting service failed to execute the final double-entry confirmation.
+    /// </summary>
+    public Event<ConfirmAccountBalanceFailed> ConfirmAccountBalanceFailed { get; private set; } = null!;
 }

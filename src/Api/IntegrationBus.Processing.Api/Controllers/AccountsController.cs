@@ -86,7 +86,8 @@ public sealed class AccountsController(
 
         SeedAccountDatabaseBulkData command = new()
         {
-            RecordQuantity = request.Count
+            RecordQuantity = request.Count,
+            Currency = request.Currency,
         };
 
         // Asynchronously publish the command payload directly to the Kafka topic

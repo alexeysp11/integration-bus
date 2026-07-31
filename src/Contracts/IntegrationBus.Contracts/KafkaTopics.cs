@@ -61,6 +61,36 @@ public static class KafkaTopics
     public const string AccountBalanceRelease = "account-balance-release";
 
     /// <summary>
+    /// Specifies the Kafka messaging topic dedicated to streaming successful asset hold cancellation telemetry event payloads.
+    /// </summary>
+    public const string AccountBalanceReleasePassed = "account-balance-release-passed";
+
+    /// <summary>
+    /// Specifies the Kafka messaging topic dedicated to streaming infrastructure or data failure events encountered during compensation routines.
+    /// </summary>
+    public const string AccountBalanceReleaseFailed = "account-balance-release-failed";
+
+    /// <summary>
+    /// Specifies the Kafka messaging topic dedicated to streaming idempotency verification events indicating a compensation release step was bypassed safely.
+    /// </summary>
+    public const string AccountBalanceReleaseSkipped = "account-balance-release-skipped";
+
+    /// <summary>
+    /// Specifies the Kafka messaging topic dedicated to streaming explicit balance confirmation commands targeting the Accounting engine boundary.
+    /// </summary>
+    public const string AccountBalanceConfirm = "account-balance-confirm";
+
+    /// <summary>
+    /// Specifies the Kafka messaging topic dedicated to streaming successful double-entry ledger confirmation event telemetry payloads.
+    /// </summary>
+    public const string AccountBalanceConfirmPassed = "account-balance-confirm-passed";
+
+    /// <summary>
+    /// Specifies the Kafka messaging topic dedicated to streaming transaction confirmation breakdown or infrastructure failure event payloads.
+    /// </summary>
+    public const string AccountBalanceConfirmFailed = "account-balance-confirm-failed";
+
+    /// <summary>
     /// Inbound command topic mapping anti-fraud scoring and velocity limit validation pipelines.
     /// </summary>
     public const string ComplianceLimitsCheck = "compliance-limits-check";

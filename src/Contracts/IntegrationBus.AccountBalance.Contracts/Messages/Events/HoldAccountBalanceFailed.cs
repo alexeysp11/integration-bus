@@ -15,6 +15,8 @@ public sealed record HoldAccountBalanceFailed
     /// </summary>
     public string Reason { get; init; } = string.Empty;
 
-    // TODO: add xml comment.
+    /// <summary>
+    /// Gets the strict coordinated universal temporal timestamp tracking exactly when the balance reservation pipeline execution failed.
+    /// </summary>
     public DateTime FailedAt { get; init; } = DateTime.UtcNow;
 }

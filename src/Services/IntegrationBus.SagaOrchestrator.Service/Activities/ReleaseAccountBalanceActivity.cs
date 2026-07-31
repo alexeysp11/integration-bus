@@ -3,6 +3,7 @@ using IntegrationBus.SagaOrchestrator.Service.Sagas;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Contracts.Messages.Events;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 
 namespace IntegrationBus.SagaOrchestrator.Service.Activities;
 
@@ -11,7 +12,8 @@ namespace IntegrationBus.SagaOrchestrator.Service.Activities;
 /// </summary>
 public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountBalance> producer) :
     IStateMachineActivity<TransactionSagaInstance, CheckComplianceLimitsFailed>,
-    IStateMachineActivity<TransactionSagaInstance, WriteLedgerRecordFailed>
+    IStateMachineActivity<TransactionSagaInstance, WriteLedgerRecordFailed>,
+    IStateMachineActivity<TransactionSagaInstance, ConfirmAccountBalanceFailed>
 {
     public void Probe(ProbeContext context) => context.CreateScope("release-account-balance-hold-activity");
 
@@ -39,6 +41,12 @@ public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountB
         await next.Execute(context);
     }
 
+    public async Task Execute(BehaviorContext<TransactionSagaInstance, ConfirmAccountBalanceFailed> context, IBehavior<TransactionSagaInstance, ConfirmAccountBalanceFailed> next)
+    {
+        await SendReleaseCommandAsync(context.Saga, context.CancellationToken);
+        await next.Execute(context);
+    }
+
     public Task Faulted<TException>(
         BehaviorExceptionContext<TransactionSagaInstance, CheckComplianceLimitsFailed, TException> context,
         IBehavior<TransactionSagaInstance, CheckComplianceLimitsFailed> next) where TException : Exception
@@ -49,6 +57,13 @@ public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountB
     public Task Faulted<TException>(
         BehaviorExceptionContext<TransactionSagaInstance, WriteLedgerRecordFailed, TException> context,
         IBehavior<TransactionSagaInstance, WriteLedgerRecordFailed> next) where TException : Exception
+    {
+        return next.Faulted(context);
+    }
+
+    public Task Faulted<TException>(
+        BehaviorExceptionContext<TransactionSagaInstance, ConfirmAccountBalanceFailed, TException> context,
+        IBehavior<TransactionSagaInstance, ConfirmAccountBalanceFailed> next) where TException : Exception
     {
         return next.Faulted(context);
     }

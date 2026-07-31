@@ -42,9 +42,13 @@ public sealed class TransactionSagaInstance : SagaStateMachineInstance
     /// </summary>
     public DateTime CreatedAt { get; set; }
 
-    // TODO: add xml comment.
+    /// <summary>
+    /// Gets or sets the exact temporal checkpoint tracking when this stateful saga database record context was last mutated.
+    /// </summary>
     public DateTime UpdatedAt { get; set; }
 
-    // TODO: add xml comment.
-    public string? ErrorMessage {  get; set; }
+    /// <summary>
+    /// Gets or sets the comprehensive descriptive failure reason summary explaining why the transaction saga processing aborted.
+    /// </summary>
+    public string? ErrorMessage { get; set; }
 }

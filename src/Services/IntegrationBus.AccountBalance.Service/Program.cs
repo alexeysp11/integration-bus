@@ -1,11 +1,14 @@
 using MassTransit;
 using Serilog;
-using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
+using IntegrationBus.AccountBalance.Service.BackgroundServices;
+using IntegrationBus.AccountBalance.Service.Configurations;
+using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Service.DbContexts;
-using Microsoft.EntityFrameworkCore;
 using IntegrationBus.Contracts;
+using Microsoft.EntityFrameworkCore;
+using IntegrationBus.AccountBalance.Service.Providers;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -23,6 +26,13 @@ try
     builder.Services.AddDbContext<BalanceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("BalanceDb")));
 
+    builder.Services.AddScoped<IAccountStateReconstructor, AccountStateReconstructor>();
+
+    builder.Services.Configure<SnapshotEngineOptions>(
+        builder.Configuration.GetSection("SnapshotEngine"));
+
+    builder.Services.AddHostedService<SnapshotGenerationEngine>();
+
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 
     builder.Services.AddMassTransit(x =>
@@ -38,6 +48,8 @@ try
             rider.AddConsumer<HoldAccountBalanceConsumer>();
             rider.AddConsumer<TopUpAccountBalanceConsumer>();
             rider.AddConsumer<SeedAccountDatabaseBulkDataConsumer>();
+            rider.AddConsumer<ConfirmAccountBalanceConsumer>();
+            rider.AddConsumer<ReleaseAccountBalanceConsumer>();
 
             rider.AddProducer<HoldAccountBalancePassed>(KafkaTopics.AccountBalanceHoldPassed);
             rider.AddProducer<HoldAccountBalanceFailed>(KafkaTopics.AccountBalanceHoldFailed);
@@ -47,6 +59,13 @@ try
 
             rider.AddProducer<SeedAccountDatabaseBulkDataPassed>(KafkaTopics.AccountDatabaseSeedPassed);
             rider.AddProducer<SeedAccountDatabaseBulkDataFailed>(KafkaTopics.AccountDatabaseSeedFailed);
+
+            rider.AddProducer<ReleaseAccountBalancePassed>(KafkaTopics.AccountBalanceReleasePassed);
+            rider.AddProducer<ReleaseAccountBalanceSkipped>(KafkaTopics.AccountBalanceReleaseSkipped);
+            rider.AddProducer<ReleaseAccountBalanceFailed>(KafkaTopics.AccountBalanceReleaseFailed);
+
+            rider.AddProducer<ConfirmAccountBalancePassed>(KafkaTopics.AccountBalanceConfirmPassed);
+            rider.AddProducer<ConfirmAccountBalanceFailed>(KafkaTopics.AccountBalanceConfirmFailed);
 
             rider.UsingKafka((context, k) =>
             {
@@ -73,6 +92,20 @@ try
                     e =>
                     {
                         e.ConfigureConsumer<SeedAccountDatabaseBulkDataConsumer>(context);
+                    });
+                k.TopicEndpoint<ConfirmAccountBalance>(
+                    KafkaTopics.AccountBalanceConfirm,
+                    "balance-service-group",
+                    e =>
+                    {
+                        e.ConfigureConsumer<ConfirmAccountBalanceConsumer>(context);
+                    });
+                k.TopicEndpoint<ReleaseAccountBalance>(
+                    KafkaTopics.AccountBalanceRelease,
+                    "balance-service-group",
+                    e =>
+                    {
+                        e.ConfigureConsumer<ReleaseAccountBalanceConsumer>(context);
                     });
             });
         });

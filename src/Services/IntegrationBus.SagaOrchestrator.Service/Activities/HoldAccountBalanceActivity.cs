@@ -2,6 +2,7 @@
 using IntegrationBus.SagaOrchestrator.Service.Sagas;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
+using IntegrationBus.Contracts.Enums;
 
 namespace IntegrationBus.SagaOrchestrator.Service.Activities;
 
@@ -23,8 +24,10 @@ public sealed class HoldAccountBalanceActivity(ITopicProducer<HoldAccountBalance
         await producer.Produce(new HoldAccountBalance
         {
             TransactionId = context.Saga.CorrelationId,
-            AccountId = context.Saga.SourceAccountId,
-            Amount = context.Saga.Amount
+            AccountFromId = context.Saga.SourceAccountId,
+            AccountToId = context.Saga.TargetAccountId,
+            Amount = context.Saga.Amount,
+            Currency = (Currency)context.Saga.CurrencyId
         }, context.CancellationToken);
 
         // Forward execution sequence to the subsequent state machine pipeline filters

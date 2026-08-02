@@ -1,14 +1,16 @@
 using MassTransit;
 using Serilog;
-using IntegrationBus.SagaOrchestrator.Service.Sagas;
+using IntegrationBus.Contracts;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
-using IntegrationBus.Compliance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
-using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using IntegrationBus.Compliance.Contracts.Messages.Commands;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Contracts.Messages.Commands;
 using IntegrationBus.CoreLedger.Contracts.Messages.Events;
-using IntegrationBus.Contracts;
+using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using IntegrationBus.SagaOrchestrator.Service.DbContexts;
+using IntegrationBus.SagaOrchestrator.Service.Sagas;
+using Microsoft.EntityFrameworkCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -23,9 +25,22 @@ try
     // Inject Serilog provider infrastructure into internal dependency container
     builder.Services.AddSerilog();
 
+    // Register database context for saga state and outbox storage
+    builder.Services.AddDbContext<SagaDbContext>(options =>
+    {
+        options.UseNpgsql(builder.Configuration.GetConnectionString("SagaDb"));
+    });
+
     // Configure MassTransit with Kafka transport footprint
     builder.Services.AddMassTransit(x =>
     {
+        // Configure Transactional Outbox and Consumer Inbox for idempotency
+        x.AddEntityFrameworkOutbox<SagaDbContext>(o =>
+        {
+            o.UsePostgres();
+            o.UseBusOutbox();
+        });
+
         x.UsingInMemory((context, cfg) =>
         {
             cfg.ConfigureEndpoints(context);
@@ -34,9 +49,13 @@ try
         // Establish baseline Kafka rider footprint required for Issue #2
         x.AddRider(rider =>
         {
-            // Register the stateful saga state machine inside IoC container
+            // Bind saga state machine to Entity Framework repository
             rider.AddSagaStateMachine<TransactionSagaStateMachine, TransactionSagaInstance>()
-                    .InMemoryRepository();
+                 .EntityFrameworkRepository(r =>
+                 {
+                     r.ExistingDbContext<SagaDbContext>();
+                     r.UsePostgres();
+                 });
 
             // Bind saga consumers to listen to their respective Kafka topics
             rider.AddConsumersFromNamespaceContaining<TransactionSagaStateMachine>();
@@ -49,14 +68,16 @@ try
 
             rider.UsingKafka((context, k) =>
             {
-                k.Host("localhost:9092"); // Default local Kafka broker address allocation
+                k.Host("localhost:9092");
 
-                // Explicitly map incoming Kafka topic endpoint to the Saga instance listener
+                // Repeat this pattern for EVERY topic endpoint inside the orchestrator
                 k.TopicEndpoint<StartTransactionSaga>(
                     KafkaTopics.SagaTransactionStart,
                     "saga-orchestrator-group",
                     e =>
                     {
+                        // Enable the Transactional Outbox / Consumer Inbox middleware filter for this specific topic
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
@@ -65,6 +86,7 @@ try
                     "saga-orchestrator-group",
                     e =>
                     {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
@@ -73,6 +95,7 @@ try
                     "saga-orchestrator-group",
                     e =>
                     {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
@@ -81,6 +104,7 @@ try
                     "saga-orchestrator-group",
                     e =>
                     {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
@@ -89,6 +113,7 @@ try
                     "saga-orchestrator-group",
                     e =>
                     {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
@@ -97,6 +122,7 @@ try
                     "saga-orchestrator-group",
                     e =>
                     {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
 
@@ -105,6 +131,25 @@ try
                     "saga-orchestrator-group",
                     e =>
                     {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
+                        e.ConfigureSaga<TransactionSagaInstance>(context);
+                    });
+
+                k.TopicEndpoint<ConfirmAccountBalancePassed>(
+                    KafkaTopics.AccountBalanceConfirmPassed,
+                    "saga-orchestrator-group",
+                    e =>
+                    {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
+                        e.ConfigureSaga<TransactionSagaInstance>(context);
+                    });
+
+                k.TopicEndpoint<ConfirmAccountBalanceFailed>(
+                    KafkaTopics.AccountBalanceConfirmFailed,
+                    "saga-orchestrator-group",
+                    e =>
+                    {
+                        e.UseEntityFrameworkOutbox<SagaDbContext>(context);
                         e.ConfigureSaga<TransactionSagaInstance>(context);
                     });
             });
@@ -112,6 +157,13 @@ try
     });
 
     IHost host = builder.Build();
+
+    using (IServiceScope scope = host.Services.CreateScope())
+    {
+        SagaDbContext dbContext = scope.ServiceProvider.GetRequiredService<SagaDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
     await host.RunAsync();
 }
 catch (Exception ex)

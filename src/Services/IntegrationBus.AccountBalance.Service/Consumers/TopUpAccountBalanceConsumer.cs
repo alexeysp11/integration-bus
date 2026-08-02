@@ -15,9 +15,6 @@ namespace IntegrationBus.AccountBalance.Service.Consumers;
 /// Processes asynchronous account balance replenishment commands delivered via Kafka 
 /// and dispatches the execution outcome events.
 /// </summary>
-/// <summary>
-/// Asynchronously consumes account balance replenishment requests, utilizing append-only ledger mechanisms and optimistic concurrency.
-/// </summary>
 public sealed class TopUpAccountBalanceConsumer(
     BalanceDbContext dbContext,
     ILogger<TopUpAccountBalanceConsumer> logger,

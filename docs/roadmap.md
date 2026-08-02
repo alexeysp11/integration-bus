@@ -85,7 +85,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - The `/seed` route is completely unreachable and returns an HTTP 404 error when the environment profile is set to "Production".
 
 ### 📌 Accounting Domain: Event Sourcing Migration
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/accounting-event-sourcing`
 *   **Description:** Refactor the Accounting service balance modification layer. Migrate from a state-overwrite write model to an immutable, append-only event ledger log schema to remove persistent database row lock contentions.
 *   **Todo List:**
@@ -96,12 +96,12 @@ This document outlines the complete iterative implementation plan for the `integ
     - Retrieving an account balance correctly reconstructs the net state using the snapshot combined with subsequent append-only entries.
 
 ### 📌 Saga Orchestrator: MassTransit Transactional Outbox and Consumer Inbox
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/orchestrator-message-idempotency`
 *   **Description:** Configure system-wide guaranteed message delivery and transaction execution atomicity inside the Saga Orchestrator. Implement an transactional outbox checkpoint and an inbox deduplication layer to protect the orchestration sequence from infrastructure-level transport issues.
 *   **Todo List:**
-    - [ ] Integrate MassTransit Transactional Outbox inside `SagaOrchestrator.Service` to link state persistence and outbound event dispatching.
-    - [ ] Configure MassTransit Consumer Inbox layer to enforce automated message deduplication across inbound communication pipelines.
+    - [x] Integrate MassTransit Transactional Outbox inside `SagaOrchestrator.Service` to link state persistence and outbound event dispatching.
+    - [x] Configure MassTransit Consumer Inbox layer to enforce automated message deduplication across inbound communication pipelines.
 *   **Definition of Done:**
     - State machine database events and Kafka message dispatches execute atomically within a unified transaction boundaries.
     - Intentionally duplicated command messages sent to the orchestrator are caught and dropped by the consumer inbox without causing double-processing defects.

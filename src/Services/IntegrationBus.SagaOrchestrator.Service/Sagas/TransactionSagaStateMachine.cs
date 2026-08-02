@@ -130,16 +130,6 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     public State AwaitingAccountingCommit { get; private set; } = null!;
 
     /// <summary>
-    /// Gets the terminal state definition representing a successfully executed and finalized distributed transaction saga lifetime.
-    /// </summary>
-    public State Completed { get; private set; } = null!;
-
-    /// <summary>
-    /// Gets the terminal state definition representing a structurally aborted or failed distributed transaction saga lifecycle context.
-    /// </summary>
-    public State Failed { get; private set; } = null!;
-
-    /// <summary>
     /// Gets the trigger event configuration for the transaction initialization command.
     /// </summary>
     public Event<StartTransactionSaga> StartTransactionSaga { get; private set; } = null!;
@@ -183,4 +173,14 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
     /// Gets the trigger event configuration indicating that the Accounting service failed to execute the final double-entry confirmation.
     /// </summary>
     public Event<ConfirmAccountBalanceFailed> ConfirmAccountBalanceFailed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the terminal state definition representing a successfully executed and finalized distributed transaction saga lifetime.
+    /// </summary>
+    public State Completed { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the terminal state definition representing a structurally aborted or failed distributed transaction saga lifecycle context.
+    /// </summary>
+    public State Failed { get; private set; } = null!;
 }

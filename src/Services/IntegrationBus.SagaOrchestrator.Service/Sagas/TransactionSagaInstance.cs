@@ -18,6 +18,11 @@ public sealed class TransactionSagaInstance : SagaStateMachineInstance
     public string CurrentState { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the optimistic concurrency token mapping to the PostgreSQL system xmin column.
+    /// </summary>
+    public uint RowVersion { get; set; }
+
+    /// <summary>
     /// Gets or sets the source account identifier associated with the active transaction.
     /// </summary>
     public Guid SourceAccountId { get; set; }

@@ -127,8 +127,8 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - Kafka__BootstrapServers=integration-bus-kafka:9094
-      - ReverseProxy__Clusters__processing-cluster__Destinations__http-destination__Address=integration-bus-processing-api:5201
-      - ReverseProxy__Clusters__processing-cluster__Destinations__https-destination__Address=integration-bus-processing-api:5201
+      - ReverseProxy__Clusters__processing-cluster__Destinations__http-destination__Address=http://integration-bus-processing-api:8080
+      - ReverseProxy__Clusters__processing-cluster__Destinations__https-destination__Address=http://integration-bus-processing-api:8080
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console

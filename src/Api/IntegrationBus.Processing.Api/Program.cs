@@ -47,6 +47,9 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
+string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
+    ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
 // Initialize MassTransit memory core and target Kafka rider environment
 builder.Services.AddMassTransit(x =>
 {
@@ -59,7 +62,7 @@ builder.Services.AddMassTransit(x =>
 
         rider.UsingKafka((context, k) =>
         {
-            k.Host("localhost:9092");
+            k.Host(kafkaConnectionString);
         });
     });
 

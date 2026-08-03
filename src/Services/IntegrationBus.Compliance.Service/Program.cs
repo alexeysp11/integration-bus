@@ -21,7 +21,8 @@ try
     builder.Services.AddDbContext<ComplianceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("ComplianceDb")));
 
-    string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+    string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
+        ?? throw new InvalidOperationException("Kafka connection string is not specified");
 
     builder.Services.AddMassTransit(x =>
     {

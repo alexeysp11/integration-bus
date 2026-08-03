@@ -28,6 +28,11 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9094"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   integration-bus-kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -40,6 +45,49 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: integration-bus-kafka:9094
     depends_on:
       - integration-bus-kafka
+
+  # Background container for automated Kafka topic initialization and provisioning
+  integration-bus-kafka-provisioner:
+    image: apache/kafka:latest
+    container_name: integration-bus-kafka-provisioner
+    entrypoint: [ "sh", "-c" ]
+    command:
+      - |
+        echo "Waiting for Kafka broker to reach a healthy operational state..."
+        while ! /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server integration-bus-kafka:9094 >/dev/null 2>&1; do
+          sleep 1
+        done
+
+        echo "Kafka broker is ready. Provisioning total infrastructure topic topologies..."
+        
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic saga-transaction-start
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-hold
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-hold-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-hold-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic compliance-limits-check
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic compliance-limits-check-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic compliance-limits-check-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic core-ledger-record-write
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic core-ledger-record-write-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic core-ledger-record-write-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-confirm
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-confirm-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-confirm-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic accounting-balance-topup
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic accounting-balance-topup-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic accounting-balance-topup-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-database-seed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-database-seed-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-database-seed-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-release
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-release-passed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-release-failed
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-release-skipped
+
+        echo "Infrastructure topic auto-provisioning pipeline completed successfully."
+    depends_on:
+      integration-bus-kafka:
+        condition: service_healthy
 
   integration-bus-redis:
     image: redis:alpine

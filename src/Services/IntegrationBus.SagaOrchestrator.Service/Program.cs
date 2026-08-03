@@ -31,6 +31,9 @@ try
         options.UseNpgsql(builder.Configuration.GetConnectionString("SagaDb"));
     });
 
+    string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
+        ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
     // Configure MassTransit with Kafka transport footprint
     builder.Services.AddMassTransit(x =>
     {
@@ -68,7 +71,7 @@ try
 
             rider.UsingKafka((context, k) =>
             {
-                k.Host("localhost:9092");
+                k.Host(kafkaConnectionString);
 
                 // Repeat this pattern for EVERY topic endpoint inside the orchestrator
                 k.TopicEndpoint<StartTransactionSaga>(

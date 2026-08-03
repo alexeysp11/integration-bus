@@ -7,21 +7,23 @@ using Microsoft.EntityFrameworkCore;
 using IntegrationBus.Contracts;
 using IntegrationBus.Compliance.Contracts.Messages.Commands;
 
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .Enrich.FromLogContext()
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
-
 try
 {
     HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
-    builder.Services.AddSerilog();
+
+    // Bootstrap logging layers immediately to track container structural allocation phases
+    Log.Logger = new LoggerConfiguration()
+        .ReadFrom.Configuration(builder.Configuration)
+        .CreateLogger();
+
+    builder.Logging.ClearProviders();
+    builder.Logging.AddSerilog();
 
     builder.Services.AddDbContext<ComplianceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("ComplianceDb")));
 
-    string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+    string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
+        ?? throw new InvalidOperationException("Kafka connection string is not specified");
 
     builder.Services.AddMassTransit(x =>
     {

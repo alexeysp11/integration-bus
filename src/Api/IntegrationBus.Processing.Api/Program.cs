@@ -8,16 +8,15 @@ using MassTransit;
 using Scalar.AspNetCore;
 using Serilog;
 
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .Enrich.FromLogContext()
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
-
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Inject Serilog provider infrastructure into internal dependency container
-builder.Services.AddSerilog();
+// Bootstrap logging layers immediately to track container structural allocation phases
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .CreateLogger();
+
+builder.Logging.ClearProviders();
+builder.Logging.AddSerilog();
 
 // Register controllers with an explicit, strongly-typed custom error layout handler
 builder.Services.AddControllers()
@@ -47,6 +46,9 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
+string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
+    ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
 // Initialize MassTransit memory core and target Kafka rider environment
 builder.Services.AddMassTransit(x =>
 {
@@ -59,7 +61,7 @@ builder.Services.AddMassTransit(x =>
 
         rider.UsingKafka((context, k) =>
         {
-            k.Host("localhost:9092");
+            k.Host(kafkaConnectionString);
         });
     });
 

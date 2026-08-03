@@ -107,12 +107,12 @@ This document outlines the complete iterative implementation plan for the `integ
     - Intentionally duplicated command messages sent to the orchestrator are caught and dropped by the consumer inbox without causing double-processing defects.
 
 ### 📌 Infrastructure: Automated Kafka Topic Provisioning Pipeline
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `infra/kafka-auto-provisioning`
 *   **Description:** Eliminate manual infrastructure setup steps when bootstrapping the repository. Configure the application runtime layer to automatically detect, provision, and verify all required Kafka topics with baseline retention and partition policies upon service initialization.
 *   **Todo List:**
-    - [ ] Configure MassTransit Kafka Rider topology options inside service startup configurations to enable automated topic creation.
-    - [ ] Update the local `docker-compose.yml` environment to include explicit dependency checks ensuring applications wait for healthy Kafka cluster states before bootstrapping.
+    - [x] Configure MassTransit Kafka Rider topology options inside service startup configurations to enable automated topic creation.
+    - [x] Update the local `docker-compose.yml` environment to include explicit dependency checks ensuring applications wait for healthy Kafka cluster states before bootstrapping.
 *   **Definition of Done:**
     - Executing `docker compose up -d` on a completely clean machine provisions the infrastructure and applications, automatically creating all required operational topics without manual configuration.
 

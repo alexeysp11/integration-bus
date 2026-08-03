@@ -116,6 +116,150 @@ services:
       integration-bus-redis:
         condition: service_healthy
 
+  # API Layer: Gateways
+  integration-bus-gateway-api:
+    build:
+      context: .
+      dockerfile: src/Api/IntegrationBus.Gateway.Api/Dockerfile
+    container_name: integration-bus-gateway-api
+    ports:
+      - "5038:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - ReverseProxy__Clusters__processing-cluster__Destinations__http-destination__Address=integration-bus-processing-api:5201
+      - ReverseProxy__Clusters__processing-cluster__Destinations__https-destination__Address=integration-bus-processing-api:5201
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Microsoft=Warning
+      - Serilog__WriteTo__0__Name=Console
+      - Serilog__WriteTo__1__Name=File
+      - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
+      - Serilog__WriteTo__1__Args__rollingInterval=Day
+      - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  integration-bus-processing-api:
+    build:
+      context: .
+      dockerfile: src/Api/IntegrationBus.Processing.Api/Dockerfile
+    container_name: integration-bus-processing-api
+    ports:
+      - "5201:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Microsoft=Warning
+      - Serilog__WriteTo__0__Name=Console
+      - Serilog__WriteTo__1__Name=File
+      - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
+      - Serilog__WriteTo__1__Args__rollingInterval=Day
+      - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Service Layer: Workers
+  integration-bus-saga-orchestrator-service:
+    build:
+      context: .
+      dockerfile: src/Services/IntegrationBus.SagaOrchestrator.Service/Dockerfile
+    container_name: integration-bus-saga-orchestrator-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__SagaDb=Host=integration-bus-db;Port=5432;Database=saga_db;Username=postgres;Password=postgres
+      - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Microsoft=Warning
+      - Serilog__WriteTo__0__Name=Console
+      - Serilog__WriteTo__1__Name=File
+      - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
+      - Serilog__WriteTo__1__Args__rollingInterval=Day
+      - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  integration-bus-account-balance-service:
+    build:
+      context: .
+      dockerfile: src/Services/IntegrationBus.AccountBalance.Service/Dockerfile
+    container_name: integration-bus-account-balance-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__BalanceDb=Host=integration-bus-db;Port=5432;Database=accounting_db;Username=postgres;Password=postgres
+      - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Microsoft=Warning
+      - Serilog__WriteTo__0__Name=Console
+      - Serilog__WriteTo__1__Name=File
+      - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
+      - Serilog__WriteTo__1__Args__rollingInterval=Day
+      - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  integration-bus-compliance-service:
+    build:
+      context: .
+      dockerfile: src/Services/IntegrationBus.Compliance.Service/Dockerfile
+    container_name: integration-bus-compliance-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__ComplianceDb=Host=integration-bus-db;Port=5432;Database=compliance_db;Username=postgres;Password=postgres
+      - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Microsoft=Warning
+      - Serilog__WriteTo__0__Name=Console
+      - Serilog__WriteTo__1__Name=File
+      - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
+      - Serilog__WriteTo__1__Args__rollingInterval=Day
+      - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  integration-bus-core-ledger-service:
+    build:
+      context: .
+      dockerfile: src/Services/IntegrationBus.CoreLedger.Service/Dockerfile
+    container_name: integration-bus-core-ledger-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__LedgerDb=Host=integration-bus-db;Port=5432;Database=ledger_db;Username=postgres;Password=postgres
+      - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Microsoft=Warning
+      - Serilog__WriteTo__0__Name=Console
+      - Serilog__WriteTo__1__Name=File
+      - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
+      - Serilog__WriteTo__1__Args__rollingInterval=Day
+      - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   integration-bus-db:
     image: postgres
     container_name: integration-bus-db

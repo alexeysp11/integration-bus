@@ -34,8 +34,7 @@ public sealed class TransactionController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateTransactionAsync([FromBody] StartTransactionRequest request, CancellationToken cancellationToken)
     {
-        // Enforce deterministic ID generation if missing from client payload
-        Guid transactionId = request.TransactionId == Guid.Empty ? Guid.NewGuid() : request.TransactionId;
+        Guid transactionId = Guid.NewGuid();
 
         logger.LogInformation(
             "Ingesting transaction request. Allocated TransactionId: {TransactionId} for Amount: {Amount}",

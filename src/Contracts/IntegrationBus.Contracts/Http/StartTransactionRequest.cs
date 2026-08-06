@@ -8,11 +8,6 @@ namespace IntegrationBus.Contracts.Http;
 public sealed record StartTransactionRequest
 {
     /// <summary>
-    /// Gets the unique idempotent identifier for the transaction.
-    /// </summary>
-    public Guid TransactionId { get; init; }
-
-    /// <summary>
     /// Gets the source account identifier to debit funds from.
     /// </summary>
     public Guid SourceAccountId { get; init; }

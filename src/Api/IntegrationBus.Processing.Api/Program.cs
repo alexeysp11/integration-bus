@@ -4,6 +4,7 @@ using IntegrationBus.Contracts;
 using IntegrationBus.Processing.Api.Extensions;
 using IntegrationBus.Processing.Api.Validation;
 using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
+using IntegrationBus.Shared.Extensions;
 using MassTransit;
 using Scalar.AspNetCore;
 using Serilog;
@@ -46,6 +47,10 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
+builder.Services
+    .AddCoreMetrics()
+    .AddHttpMetrics();
+
 string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
     ?? throw new InvalidOperationException("Kafka connection string is not specified");
 
@@ -84,8 +89,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// Map baseline endpoints to expose controllers routing
 app.MapControllers();
+app.UseMetricsScraping();
 
 app.Run();

@@ -29,5 +29,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Contracts\IntegrationBus.Compliance.Contracts\IntegrationBus.Compliance.Contracts.csproj" />
+    <ProjectReference Include="..\..\Libraries\IntegrationBus.Shared\IntegrationBus.Shared.csproj" />
   </ItemGroup>
 </Project>

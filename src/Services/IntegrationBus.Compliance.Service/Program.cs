@@ -1,15 +1,17 @@
 using MassTransit;
 using Serilog;
+using IntegrationBus.Compliance.Contracts.Messages.Commands;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.Compliance.Service.Consumers;
 using IntegrationBus.Compliance.Service.DbContexts;
-using Microsoft.EntityFrameworkCore;
 using IntegrationBus.Contracts;
-using IntegrationBus.Compliance.Contracts.Messages.Commands;
+using IntegrationBus.Shared.Extensions;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 
 try
 {
-    HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+    WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
     // Bootstrap logging layers immediately to track container structural allocation phases
     Log.Logger = new LoggerConfiguration()
@@ -21,6 +23,10 @@ try
 
     builder.Services.AddDbContext<ComplianceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("ComplianceDb")));
+
+    builder.Services
+        .AddCoreMetrics()
+        .AddMassTransitMetrics();
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
         ?? throw new InvalidOperationException("Kafka connection string is not specified");
@@ -51,15 +57,17 @@ try
         });
     });
 
-    IHost host = builder.Build();
+    WebApplication app = builder.Build();
 
-    using (IServiceScope scope = host.Services.CreateScope())
+    app.UseMetricsScraping();
+
+    using (IServiceScope scope = app.Services.CreateScope())
     {
         ComplianceDbContext dbContext = scope.ServiceProvider.GetRequiredService<ComplianceDbContext>();
         await dbContext.Database.MigrateAsync();
     }
 
-    await host.RunAsync();
+    await app.RunAsync();
 }
 catch (Exception ex)
 {

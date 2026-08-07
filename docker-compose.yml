@@ -33,6 +33,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - integration-bus-network
 
   integration-bus-kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -45,6 +47,8 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: integration-bus-kafka:9094
     depends_on:
       - integration-bus-kafka
+    networks:
+      - integration-bus-network
 
   # Background container for automated Kafka topic initialization and provisioning
   integration-bus-kafka-provisioner:
@@ -88,6 +92,8 @@ services:
     depends_on:
       integration-bus-kafka:
         condition: service_healthy
+    networks:
+      - integration-bus-network
 
   integration-bus-redis:
     image: redis:alpine
@@ -100,6 +106,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   # Web-GUI management tool via official GitHub Container Registry
@@ -115,6 +123,8 @@ services:
     depends_on:
       integration-bus-redis:
         condition: service_healthy
+    networks:
+      - integration-bus-network
 
   # API Layer: Gateways
   integration-bus-gateway-api:
@@ -141,6 +151,8 @@ services:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   integration-bus-processing-api:
@@ -165,6 +177,8 @@ services:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   # Service Layer: Workers
@@ -175,6 +189,7 @@ services:
     container_name: integration-bus-saga-orchestrator-service
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:6001
       - ConnectionStrings__SagaDb=Host=integration-bus-db;Port=5432;Database=saga_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
       - Serilog__MinimumLevel__Default=Information
@@ -184,11 +199,15 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    ports:
+      - "6001:6001"
     depends_on:
       integration-bus-db:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   integration-bus-account-balance-service:
@@ -198,6 +217,7 @@ services:
     container_name: integration-bus-account-balance-service
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:6002
       - ConnectionStrings__BalanceDb=Host=integration-bus-db;Port=5432;Database=accounting_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
       - Serilog__MinimumLevel__Default=Information
@@ -207,11 +227,15 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    ports:
+      - "6002:6002"
     depends_on:
       integration-bus-db:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   integration-bus-compliance-service:
@@ -221,6 +245,7 @@ services:
     container_name: integration-bus-compliance-service
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:6003
       - ConnectionStrings__ComplianceDb=Host=integration-bus-db;Port=5432;Database=compliance_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
       - Serilog__MinimumLevel__Default=Information
@@ -230,11 +255,15 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    ports:
+      - "6003:6003"
     depends_on:
       integration-bus-db:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   integration-bus-core-ledger-service:
@@ -244,6 +273,7 @@ services:
     container_name: integration-bus-core-ledger-service
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:6004
       - ConnectionStrings__LedgerDb=Host=integration-bus-db;Port=5432;Database=ledger_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
       - Serilog__MinimumLevel__Default=Information
@@ -253,11 +283,15 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+    ports:
+      - "6004:6004"
     depends_on:
       integration-bus-db:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+    networks:
+      - integration-bus-network
     restart: unless-stopped
 
   integration-bus-db:
@@ -275,3 +309,32 @@ services:
       - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "54321:5432"
+    networks:
+      - integration-bus-network
+
+  integration-bus-prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: integration-bus-prometheus
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - integration-bus-network
+
+  integration-bus-grafana:
+    image: grafana/grafana:11.1.0
+    container_name: integration-bus-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - integration-bus-network
+
+networks:
+  integration-bus-network:
+    driver: bridge

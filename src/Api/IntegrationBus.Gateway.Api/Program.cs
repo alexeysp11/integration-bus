@@ -1,4 +1,5 @@
 using Serilog;
+using IntegrationBus.Shared.Extensions;
 
 try
 {
@@ -8,6 +9,10 @@ try
     Log.Logger = new LoggerConfiguration()
         .ReadFrom.Configuration(builder.Configuration)
         .CreateLogger();
+
+    builder.Services
+        .AddCoreMetrics()
+        .AddHttpMetrics();
 
     builder.Logging.ClearProviders();
     builder.Logging.AddSerilog();
@@ -26,6 +31,7 @@ try
 
     app.UseHttpsRedirection();
     app.MapReverseProxy();
+    app.UseMetricsScraping();
 
     await app.RunAsync();
 }

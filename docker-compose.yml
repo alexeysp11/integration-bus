@@ -161,7 +161,7 @@ services:
       dockerfile: src/Api/IntegrationBus.Processing.Api/Dockerfile
     container_name: integration-bus-processing-api
     ports:
-      - "5201:8080"
+      - "5201:5201"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - Kafka__BootstrapServers=integration-bus-kafka:9094

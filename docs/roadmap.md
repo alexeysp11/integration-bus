@@ -120,20 +120,18 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ## 📈 Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)
 
-### 📌 Metrics Foundation (Prometheus & Grafana)
-* **Status:** **`Pending ⏳`**
+### 📌 Metrics Foundation (Prometheus)
+* **Status:** **`Done ✅`**
 * **Git Branch:** `infra/observability-metrics`
-* **Description:** Establish the first pillar of observability by implementing time-series metrics collection. Enable .NET runtime and MassTransit event tracking across all microservices, configure Prometheus for automated endpoint scraping, and provision Grafana to visualize system health and message throughput.
+* **Description:** Establish the first pillar of observability by implementing time-series metrics collection. Enable .NET runtime and MassTransit event tracking across all microservices, and configure Prometheus for automated endpoint scraping.
 * **Todo List:**
-    - [ ] Install OpenTelemetry Metric packages (`OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Instrumentation.Runtime`) across all .NET services.
-    - [ ] Expose a standard Prometheus scraping endpoint (`/metrics`) using `app.MapPrometheusScrapingEndpoint()` in the service initialization pipelines.
-    - [ ] Update `docker-compose.yml` to spin up isolated Prometheus and Grafana containers with persistent named volumes to prevent data loss.
-    - [ ] Configure `prometheus.yml` target jobs to dynamically discover or explicitly scrape metrics from `SagaOrchestrator.Service` and `Accounting.Service`.
-    - [ ] Connect Prometheus as a default data source in Grafana and build a basic operational dashboard tracking service CPU/RAM usage and total MassTransit processed messages.
+    - [x] Install OpenTelemetry Metric packages (`OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Instrumentation.Runtime`) across all .NET services.
+    - [x] Expose a standard Prometheus scraping endpoint (`/metrics`) using `app.MapPrometheusScrapingEndpoint()` in the service initialization pipelines.
+    - [x] Update `docker-compose.yml` to spin up isolated Prometheus container with persistent named volumes to prevent data loss.
+    - [x] Configure `prometheus.yml` target jobs to explicitly scrape metrics from `SagaOrchestrator.Service`, `Processing.Api`, and other services.
 * **Definition of Done:**
     - Navigating to `http://localhost:<port>/metrics` on any service renders valid text-based Prometheus metrics.
-    - Prometheus target dashboard status shows all configured microservice scraping jobs as `UP`.
-    - Grafana successfully visualizes dynamic, real-time charts showing memory footprints and live message counters.
+    - Prometheus target dashboard status (`http://localhost:9090/targets`) shows all configured microservice scraping jobs as `UP`.
 
 ### 📌 End-to-End Distributed Tracing (Jaeger & MassTransit)
 * **Status:** **`Pending ⏳`**

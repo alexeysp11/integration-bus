@@ -6,13 +6,15 @@ using IntegrationBus.AccountBalance.Service.BackgroundServices;
 using IntegrationBus.AccountBalance.Service.Configurations;
 using IntegrationBus.AccountBalance.Service.Consumers;
 using IntegrationBus.AccountBalance.Service.DbContexts;
-using IntegrationBus.Contracts;
-using Microsoft.EntityFrameworkCore;
 using IntegrationBus.AccountBalance.Service.Providers;
+using IntegrationBus.Contracts;
+using IntegrationBus.Shared.Extensions;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 
 try
 {
-    HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+    WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
     // Bootstrap logging layers immediately to track container structural allocation phases
     Log.Logger = new LoggerConfiguration()
@@ -24,6 +26,10 @@ try
 
     builder.Services.AddDbContext<BalanceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("BalanceDb")));
+
+    builder.Services
+        .AddCoreMetrics()
+        .AddMassTransitMetrics();
 
     builder.Services.AddScoped<IAccountStateReconstructor, AccountStateReconstructor>();
 
@@ -111,15 +117,17 @@ try
         });
     });
 
-    IHost host = builder.Build();
+    WebApplication app = builder.Build();
 
-    using (IServiceScope scope = host.Services.CreateScope())
+    app.UseMetricsScraping();
+
+    using (IServiceScope scope = app.Services.CreateScope())
     {
         BalanceDbContext dbContext = scope.ServiceProvider.GetRequiredService<BalanceDbContext>();
         await dbContext.Database.MigrateAsync();
     }
 
-    await host.RunAsync();
+    await app.RunAsync();
 }
 catch (Exception ex)
 {

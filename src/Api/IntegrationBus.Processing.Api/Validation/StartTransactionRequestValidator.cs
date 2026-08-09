@@ -14,10 +14,6 @@ public sealed class StartTransactionRequestValidator : AbstractValidator<StartTr
     /// </summary>
     public StartTransactionRequestValidator()
     {
-        RuleFor(x => x.TransactionId)
-            .NotEmpty()
-            .WithMessage("TransactionId is required and must be a valid, non-empty unique identifier.");
-
         RuleFor(x => x.SourceAccountId)
             .NotEmpty()
             .WithMessage("Source account identifier is required and cannot be empty.");

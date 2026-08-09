@@ -116,22 +116,55 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Definition of Done:**
     - Executing `docker compose up -d` on a completely clean machine provisions the infrastructure and applications, automatically creating all required operational topics without manual configuration.
 
-### 📌 Infrastructure: Distributed Tracing and Saga Observability
-*   **Status:** **`Pending ⏳`**
-*   **Git Branch:** `infra/saga-distributed-tracing`
-*   **Description:** Implement comprehensive distributed tracing and correlation tracking across the microservice ecosystem. Integrate OpenTelemetry into MassTransit and configure a centralized Jaeger telemetry collection collector to enable granular, real-time observability of distributed transaction saga execution paths and latency profiles.
-*   **Todo List:**
-    - [ ] Integrate OpenTelemetry SDK into `SagaOrchestrator.Service` and `Accounting.Service`, enabling MassTransit native source tracing generation listeners.
-    - [ ] Configure the serilog/microsoft logging pipeline across all services to automatically enrich structural log contexts with active OpenTelemetry `TraceId` and `SpanId` properties.
-    - [ ] Update the central `docker-compose.yml` configuration suite to provision and network a baseline Jaeger multi-container deployment architecture tracking standard OTLP/gRPC export streams.
-*   **Definition of Done:**
-    - Triggering a new `StartTransactionSaga` command initiates a distinct unified trace session context that maps every subsequent message hop flawlessly.
-    - Centralized Jaeger UI visualizes interactive transaction sequence waterfalls showing exactly where a distributed saga stalls or errors out.
-    - Searching a raw `CorrelationId` string inside application logs instantly correlates and brings up the multi-service execution footprints.
+---
+
+## 📈 Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)
+
+### 📌 Metrics Foundation (Prometheus)
+* **Status:** **`Done ✅`**
+* **Git Branch:** `infra/observability-metrics`
+* **Description:** Establish the first pillar of observability by implementing time-series metrics collection. Enable .NET runtime and MassTransit event tracking across all microservices, and configure Prometheus for automated endpoint scraping.
+* **Todo List:**
+    - [x] Install OpenTelemetry Metric packages (`OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Instrumentation.Runtime`) across all .NET services.
+    - [x] Expose a standard Prometheus scraping endpoint (`/metrics`) using `app.MapPrometheusScrapingEndpoint()` in the service initialization pipelines.
+    - [x] Update `docker-compose.yml` to spin up isolated Prometheus container with persistent named volumes to prevent data loss.
+    - [x] Configure `prometheus.yml` target jobs to explicitly scrape metrics from `SagaOrchestrator.Service`, `Processing.Api`, and other services.
+* **Definition of Done:**
+    - Navigating to `http://localhost:<port>/metrics` on any service renders valid text-based Prometheus metrics.
+    - Prometheus target dashboard status (`http://localhost:9090/targets`) shows all configured microservice scraping jobs as `UP`.
+
+### 📌 End-to-End Distributed Tracing (Jaeger & MassTransit)
+* **Status:** **`Pending ⏳`**
+* **Git Branch:** `infra/observability-tracing`
+* **Description:** Implement comprehensive distributed tracing to expose asynchronous communication pathways. Configure the OpenTelemetry Tracing SDK to listen to MassTransit native activity sources, facilitating automatic `TraceId` injection and extraction over Kafka message headers, and export telemetry to a centralized Jaeger collector.
+* **Todo List:**
+    - [ ] Integrate OpenTelemetry Tracing SDK into .NET services and explicitly register `.AddSource("MassTransit")` to listen to internal framework activity streams.
+    - [ ] Configure the OTLP exporter options within the service builder to push telemetry data via gRPC (`http://localhost:4317`) to the central collector.
+    - [ ] Provision a Jaeger `all-in-one` container in `docker-compose.yml` with OTLP ports enabled and map the web UI port (`16686`) for browser access.
+    - [ ] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans.
+* **Definition of Done:**
+    - Jaeger UI visualizes interactive asynchronous waterfall graphs mapping the complete lifecycle of a single Saga.
+    - Every network hop between `SagaOrchestrator` and processing services is captured as an interconnected child span under a single `TraceId`.
+    - Database operations or HTTP calls executed during a message context are automatically attached to the active trace span.
+
+### 📌 Centralized Log Analytics & Correlative Search (Loki & Serilog)
+* **Status:** **`Pending ⏳`**
+* **Git Branch:** `infra/observability-logs`
+* **Description:** Centralize application logs by migrating from standard text files to a high-performance, lightweight Grafana Loki stream engine. Configure Serilog to enrich every log entry with active OpenTelemetry contexts (`TraceId`, `SpanId`), enabling instant cross-referencing between system logs and trace waterfalls.
+* **Todo List:**
+    - [ ] Provision a Grafana Loki container inside `docker-compose.yml` along with a minimal configuration file defining retention and storage behaviors.
+    - [ ] Install `Serilog.Sinks.Grafana.Loki` NuGet package across the entire microservice ecosystem.
+    - [ ] Configure the Serilog logging pipeline to append `.Enrich.FromLogContext()` and route structured JSON streams to the Loki endpoint.
+    - [ ] Ensure that MassTransit contextual properties like `CorrelationId` and active OTel `TraceId`/`SpanId` are automatically mapped into Loki log labels or metadata.
+    - [ ] Configure Grafana to use Loki as a data source and verify the functionality of log-to-trace navigation panels.
+* **Definition of Done:**
+    - Microservice console footprints are minimal, with all structured application logs streaming directly into the Loki instance.
+    - Querying a raw `CorrelationId` string inside the Grafana Explore panel aggregates multi-service execution logs chronologically.
+    - Clicking on an error log entry in Grafana allows the user to instantly view its corresponding Jaeger trace waterfall via contextual links.
 
 ---
 
-## 🧪 Stage 2: Reliability Engineering & Integration Testing
+## 🧪 Stage 3: Reliability Engineering & Integration Testing
 
 ### 📌 Quality Assurance: Core Domain Unit and Local Database Integration Testing
 *   **Status:** **`Pending ⏳`**
@@ -173,7 +206,7 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ---
 
-## 📊 Stage 3: Real-Time Analytical Contour (DWH) & Data Masking
+## 📊 Stage 4: Real-Time Analytical Contour (DWH) & Data Masking
 
 ### 📌 Setup Real-Time Analytics Pipeline with Debezium and ClickHouse
 *   **Status:** **`Pending ⏳`**
@@ -201,7 +234,7 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ---
 
-## 🌐 Stage 4: Cloud-Native Migration (Kubernetes Deployment)
+## 🌐 Stage 5: Cloud-Native Migration (Kubernetes Deployment)
 
 ### 📌 Kubernetes and Helm Migration
 *   **Status:** **`Pending ⏳`**
@@ -216,7 +249,7 @@ This document outlines the complete iterative implementation plan for the `integ
 
 ---
 
-## 🌋 Stage 5: High-Load Simulation & Chaos Engineering
+## 🌋 Stage 6: High-Load Simulation & Chaos Engineering
 
 ### 📌 High-Load Optimization: Horizontal Scaling & Kafka Partition Key Routing
 *   **Status:** **`Pending ⏳`**

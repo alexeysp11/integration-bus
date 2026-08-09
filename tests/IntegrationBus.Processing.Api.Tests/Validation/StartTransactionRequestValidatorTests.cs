@@ -27,7 +27,6 @@ public sealed class StartTransactionRequestValidatorTests
         // Arrange
         StartTransactionRequest request = new()
         {
-            TransactionId = Guid.NewGuid(),
             SourceAccountId = Guid.NewGuid(),
             TargetAccountId = Guid.NewGuid(),
             Amount = 500.00m,
@@ -95,7 +94,6 @@ public sealed class StartTransactionRequestValidatorTests
         // Arrange
         StartTransactionRequest request = new()
         {
-            TransactionId = Guid.NewGuid(),
             SourceAccountId = Guid.NewGuid(),
             TargetAccountId = Guid.NewGuid(),
             Amount = 150.75m,
@@ -115,7 +113,6 @@ public sealed class StartTransactionRequestValidatorTests
         // Arrange
         StartTransactionRequest request = new()
         {
-            TransactionId = Guid.Empty,
             SourceAccountId = Guid.Empty,
             TargetAccountId = Guid.Empty
         };
@@ -124,9 +121,6 @@ public sealed class StartTransactionRequestValidatorTests
         TestValidationResult<StartTransactionRequest> result = _validator.TestValidate(request);
 
         // Assert
-        result.ShouldHaveValidationErrorFor(x => x.TransactionId)
-            .WithErrorMessage("TransactionId is required and must be a valid, non-empty unique identifier.");
-
         result.ShouldHaveValidationErrorFor(x => x.SourceAccountId)
             .WithErrorMessage("Source account identifier is required and cannot be empty.");
 
@@ -235,7 +229,6 @@ public sealed class StartTransactionRequestValidatorTests
 
         StartTransactionRequest request = new()
         {
-            TransactionId = Guid.NewGuid(),
             SourceAccountId = Guid.NewGuid(),
             TargetAccountId = Guid.NewGuid(),
             Currency = Currency.USD,

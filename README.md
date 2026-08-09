@@ -4,11 +4,12 @@
 > This repository represents a live, step-by-step architectural evolution. Features documented below are being rolled out incrementally according to the project roadmap.
 
 ### 📊 Implementation Progress
-- [ ] **Stage 1: Core Architecture & Async Saga** — 🔄 *In Progress*
-- [ ] **Stage 2: Reliability & Integration Testing** — ⏳ *Pending*
-- [ ] **Stage 3: Real-Time Analytics (DWH) & Masking** — ⏳ *Pending*
-- [ ] **Stage 4: Cloud-Native Migration (Kubernetes)** — ⏳ *Pending*
-- [ ] **Stage 5: High-Load Simulation & Chaos Engineering** — ⏳ *Pending*
+- [x] **Stage 1: Core Architecture & Async Saga** — ✅ *Done*
+- [ ] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — 🔄 *In Progress*
+- [ ] **Stage 3: Reliability & Integration Testing** — ⏳ *Pending*
+- [ ] **Stage 4: Real-Time Analytics (DWH) & Masking** — ⏳ *Pending*
+- [ ] **Stage 5: Cloud-Native Migration (Kubernetes)** — ⏳ *Pending*
+- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending*
 
 ### 🔗 Quick Links & Documentation
 *   🗺️ **[Project Evolution Roadmap](docs/roadmap.md)** — Detailed task breakdowns, Done criteria, and milestones.

@@ -19,7 +19,7 @@
 ---
 
 ## 🎯 Project Overview
-This repository serves as a practical, production-ready blueprint for **Platform Engineering** and **Advanced Cloud-Native System Design**. The goal is to build a highly resilient, enterprise-grade distributed financial system using a **Database-per-Service** architecture, with zero complex business logic under the hood.
+This repository serves as a practical blueprint for **Platform Engineering** and **Advanced Cloud-Native System Design**. The goal is to build a highly resilient, enterprise-grade distributed financial system using a **Database-per-Service** architecture, with zero complex business logic under the hood.
 
 Instead of reinventing the wheel, this project focuses on high-load infrastructure integration, chaos engineering, real-time data streaming (CDC), and asynchronous orchestration of distributed transactions using **MassTransit Courier (Routing Slips)**, **Apache Kafka**, and **Kubernetes**.
 

@@ -1,0 +1,31 @@
+[
+  {
+    "WorkflowName": "TransactionComplianceWorkflow",
+    "Rules": [
+      {
+        "RuleName": "PositiveTransactionAmount",
+        "ErrorMessage": "Transaction amount must be strictly greater than zero.",
+        "Expression": "input.Amount > 0",
+        "RuleExpressionType": "LambdaExpression"
+      },
+      {
+        "RuleName": "MaxSingleTransactionAmount",
+        "ErrorMessage": "Transaction amount exceeds the maximum permitted single-transaction threshold of 1,000,000.",
+        "Expression": "input.Amount <= 1000000",
+        "RuleExpressionType": "LambdaExpression"
+      },
+      {
+        "RuleName": "DistinctCounterparties",
+        "ErrorMessage": "Source and target accounts must not be identical.",
+        "Expression": "input.SourceAccountId != input.TargetAccountId",
+        "RuleExpressionType": "LambdaExpression"
+      },
+      {
+        "RuleName": "SupportedCurrency",
+        "ErrorMessage": "The transaction currency is not a currently supported system asset.",
+        "Expression": "input.Currency > 0 && input.Currency <= 11",
+        "RuleExpressionType": "LambdaExpression"
+      }
+    ]
+  }
+]

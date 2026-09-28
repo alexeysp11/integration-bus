@@ -8,8 +8,11 @@ using IntegrationBus.CoreLedger.Service.Activities;
 using IntegrationBus.CoreLedger.Service.DbContexts;
 using IntegrationBus.Contracts;
 using IntegrationBus.Shared.Extensions;
+using IntegrationBus.Shared.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 
 try
 {
@@ -27,11 +30,30 @@ try
         options.UseNpgsql(builder.Configuration.GetConnectionString("LedgerDb")));
 
     builder.Services
+        .AddTelemetryResource("integration-bus-core-ledger-service")
         .AddCoreMetrics()
-        .AddMassTransitMetrics();
+        .AddMassTransitMetrics()
+        .AddDistributedTracing();
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
         ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
+    string redisConnectionString = builder.Configuration["Redis:ConnectionString"]
+        ?? throw new InvalidOperationException("Redis connection string is not specified");
+
+    builder.Services.AddSingleton<IConnectionMultiplexer>(
+        _ => ConnectionMultiplexer.Connect(redisConnectionString));
+
+    builder.Services.AddHealthChecks()
+        .AddNpgSql(builder.Configuration.GetConnectionString("LedgerDb")!, name: "postgres")
+        .AddKafka(config => config.BootstrapServers = kafkaConnectionString, name: "kafka")
+        .AddRedis(redisConnectionString, name: "redis");
+
+    // Infrastructure-level data masking pipeline: mirrors HMAC-hashed shadow copies of confidential fields
+    // (account identifiers, balances) into Kafka security topics
+    builder.Services.AddSingleton<IHmacMaskingService, HmacMaskingService>();
+    builder.Services.AddSingleton<ISecurityTopicPublisher>(sp =>
+        new KafkaSecurityTopicPublisher(kafkaConnectionString, sp.GetRequiredService<ILogger<KafkaSecurityTopicPublisher>>()));
 
     builder.Services.AddMassTransit(x =>
     {
@@ -70,6 +92,10 @@ try
                     "ledger-service-group",
                     e =>
                     {
+                        e.UseFilter(new SensitiveDataMaskingFilter<WriteLedgerRecord>(
+                            KafkaTopics.CoreLedgerRecordWrite,
+                            context.GetRequiredService<IHmacMaskingService>(),
+                            context.GetRequiredService<ISecurityTopicPublisher>()));
                         e.ConfigureConsumer<WriteLedgerRecordConsumer>(context);
                     });
             });
@@ -78,6 +104,7 @@ try
 
     WebApplication app = builder.Build();
 
+    app.MapHealthChecks("/health");
     app.UseMetricsScraping();
 
     using (IServiceScope scope = app.Services.CreateScope())

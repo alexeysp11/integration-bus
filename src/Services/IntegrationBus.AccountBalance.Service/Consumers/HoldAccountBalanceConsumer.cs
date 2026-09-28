@@ -9,19 +9,31 @@ using IntegrationBus.AccountBalance.Service.Providers;
 using IntegrationBus.Contracts.Enums;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using RedLockNet;
 
 namespace IntegrationBus.AccountBalance.Service.Consumers;
 
 /// <summary>
 /// Processes account balance reservation commands inside a transactional database boundary.
 /// </summary>
+/// <remarks>
+/// A Redis distributed lock keyed by the source account id serializes concurrent holds against the same account
+/// across all replicas of this service, closing the read-balance/insert-hold TOCTOU race that a database transaction
+/// alone (default Read Committed isolation) does not prevent. A duplicate <see cref="HoldAccountBalance"/> delivery
+/// for a <c>TransactionId</c> that was already held is detected and replayed idempotently instead of double-debiting.
+/// </remarks>
 public sealed class HoldAccountBalanceConsumer(
     ILogger<HoldAccountBalanceConsumer> logger,
     BalanceDbContext dbContext,
     IAccountStateReconstructor stateReconstructor,
+    IDistributedLockFactory lockFactory,
     ITopicProducer<HoldAccountBalancePassed> passedProducer,
     ITopicProducer<HoldAccountBalanceFailed> failedProducer) : IConsumer<HoldAccountBalance>
 {
+    private static readonly TimeSpan LockExpiry = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan LockWait = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan LockRetry = TimeSpan.FromMilliseconds(200);
+
     private const string GetAccountsCurrencyMetadataSql = $@"
         SELECT ""{nameof(AccountEntity.Id)}"" AS Id, ""{nameof(AccountEntity.Currency)}"" AS CurrencyValue
         FROM ""{nameof(BalanceDbContext.Accounts)}""
@@ -31,6 +43,13 @@ public sealed class HoldAccountBalanceConsumer(
         SELECT COALESCE(MAX(""{nameof(AccountJournalEntryEntity.SequenceNumber)}""), 0)
         FROM ""{nameof(BalanceDbContext.JournalEntries)}""
         WHERE ""{nameof(AccountJournalEntryEntity.SourceAccountId)}"" = @AccountId;";
+
+    private const string HoldEntryExistsSql = $@"
+        SELECT 1
+        FROM ""{nameof(BalanceDbContext.JournalEntries)}""
+        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId
+          AND ""{nameof(AccountJournalEntryEntity.EntryType)}"" = @EntryType
+        LIMIT 1;";
 
     private const string InsertJournalSql = $@"
         INSERT INTO ""{nameof(BalanceDbContext.JournalEntries)}"" (
@@ -53,6 +72,27 @@ public sealed class HoldAccountBalanceConsumer(
         logger.LogInformation("Processing event-sourced balance hold for Tx: {TransactionId}, Source Account: {AccountFromId}, Target Account: {AccountToId}",
             message.TransactionId, message.AccountFromId, message.AccountToId);
 
+        string lockResource = $"account-lock:{message.AccountFromId}";
+
+        using IRedLock accountLock = await lockFactory.CreateLockAsync(
+            lockResource, LockExpiry, LockWait, LockRetry, context.CancellationToken);
+
+        if (!accountLock.IsAcquired)
+        {
+            logger.LogWarning(
+                "Failed to acquire the distributed account lock for {AccountFromId} while holding Tx: {TransactionId}; another concurrent operation on the same account did not release it in time.",
+                message.AccountFromId, message.TransactionId);
+
+            await failedProducer.Produce(new HoldAccountBalanceFailed
+            {
+                TransactionId = message.TransactionId,
+                Reason = "Could not acquire the distributed account lock in time; a concurrent hold on the same account is still in progress.",
+                FailedAt = DateTime.UtcNow
+            }, context.CancellationToken);
+
+            return;
+        }
+
         DbConnection connection = dbContext.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
         {
@@ -63,6 +103,30 @@ public sealed class HoldAccountBalanceConsumer(
 
         try
         {
+            // Idempotency guard: a redelivered command for a TransactionId that already produced a hold entry
+            // is replayed without appending a second ledger mutation, protecting against Kafka at-least-once duplicates
+            bool alreadyHeld = await connection.ExecuteScalarAsync<int?>(
+                HoldEntryExistsSql,
+                new { message.TransactionId, EntryType = (int)JournalEntryType.Hold },
+                transaction) is not null;
+
+            if (alreadyHeld)
+            {
+                await transaction.CommitAsync(context.CancellationToken);
+
+                logger.LogInformation(
+                    "Duplicate HoldAccountBalance delivery detected for Tx: {TransactionId}; replaying the success event without a second ledger mutation.",
+                    message.TransactionId);
+
+                await passedProducer.Produce(new HoldAccountBalancePassed
+                {
+                    TransactionId = message.TransactionId,
+                    HeldAt = DateTime.UtcNow
+                }, context.CancellationToken);
+
+                return;
+            }
+
             // 1. Verify existence and extract strict currency records for both accounts in a single database roundtrip
             List<(Guid Id, int CurrencyValue)> accountMetadataList = (await connection.QueryAsync<(Guid Id, int CurrencyValue)>(
                 GetAccountsCurrencyMetadataSql,

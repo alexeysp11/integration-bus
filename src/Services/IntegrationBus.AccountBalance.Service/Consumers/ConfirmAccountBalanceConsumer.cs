@@ -25,8 +25,15 @@ public sealed class ConfirmAccountBalanceConsumer(
             ""{nameof(AccountJournalEntryEntity.TargetAccountId)}"",
             ""{nameof(AccountJournalEntryEntity.AmountDelta)}""
         FROM ""{nameof(BalanceDbContext.JournalEntries)}""
-        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId 
+        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId
             AND ""{nameof(AccountJournalEntryEntity.EntryType)}"" = @HoldType
+        LIMIT 1;";
+
+    private const string ConfirmedEntryExistsSql = $@"
+        SELECT 1
+        FROM ""{nameof(BalanceDbContext.JournalEntries)}""
+        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId
+          AND ""{nameof(AccountJournalEntryEntity.EntryType)}"" = @ConfirmedType
         LIMIT 1;";
 
     private const string MaxSequenceSql = $@"
@@ -64,6 +71,30 @@ public sealed class ConfirmAccountBalanceConsumer(
 
         try
         {
+            // Idempotency guard: a redelivered confirmation for a TransactionId that already posted its double-entry
+            // records is replayed without crediting the target account a second time
+            bool alreadyConfirmed = await connection.ExecuteScalarAsync<int?>(
+                ConfirmedEntryExistsSql,
+                new { message.TransactionId, ConfirmedType = (int)JournalEntryType.Confirmed },
+                transaction) is not null;
+
+            if (alreadyConfirmed)
+            {
+                await transaction.CommitAsync(context.CancellationToken);
+
+                logger.LogInformation(
+                    "Duplicate ConfirmAccountBalance delivery detected for Tx: {TransactionId}; replaying the success event without a second double-entry posting.",
+                    message.TransactionId);
+
+                await passedProducer.Produce(new ConfirmAccountBalancePassed
+                {
+                    TransactionId = message.TransactionId,
+                    ConfirmedAtUtc = DateTime.UtcNow
+                }, context.CancellationToken);
+
+                return;
+            }
+
             // 1. Locate the active historical hold record to secure transaction context validation boundaries
             (Guid SourceAccountId, Guid? TargetAccountId, decimal AmountDelta) holdEntry = await connection.QuerySingleOrDefaultAsync<(Guid SourceAccountId, Guid? TargetAccountId, decimal AmountDelta)?>(
                     FindHoldEntrySql, new { message.TransactionId, HoldType = (int)JournalEntryType.Hold }, transaction)

@@ -1,4 +1,5 @@
 using Asp.Versioning;
+using Confluent.Kafka;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.Contracts;
 using IntegrationBus.Processing.Api.Extensions;
@@ -48,11 +49,16 @@ builder.Services.AddApiVersioning(options =>
 });
 
 builder.Services
+    .AddTelemetryResource("integration-bus-processing-api")
     .AddCoreMetrics()
-    .AddHttpMetrics();
+    .AddHttpMetrics()
+    .AddDistributedTracing();
 
 string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
     ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
+builder.Services.AddHealthChecks()
+    .AddKafka(config => config.BootstrapServers = kafkaConnectionString, name: "kafka");
 
 // Initialize MassTransit memory core and target Kafka rider environment
 builder.Services.AddMassTransit(x =>
@@ -90,6 +96,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.MapControllers();
+app.MapHealthChecks("/health");
 app.UseMetricsScraping();
 
 app.Run();

@@ -1,0 +1,36 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Api/">
+    <Project Path="src/Api/IntegrationBus.Gateway.Api/IntegrationBus.Gateway.Api.csproj" />
+    <Project Path="src/Api/IntegrationBus.Processing.Api/IntegrationBus.Processing.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Contracts/">
+    <Project Path="src/Contracts/IntegrationBus.AccountBalance.Contracts/IntegrationBus.AccountBalance.Contracts.csproj" />
+    <Project Path="src/Contracts/IntegrationBus.Compliance.Contracts/IntegrationBus.Compliance.Contracts.csproj" />
+    <Project Path="src/Contracts/IntegrationBus.Contracts/IntegrationBus.Contracts.csproj" />
+    <Project Path="src/Contracts/IntegrationBus.CoreLedger.Contracts/IntegrationBus.CoreLedger.Contracts.csproj" />
+    <Project Path="src/Contracts/IntegrationBus.SagaOrchestrator.Contracts/IntegrationBus.SagaOrchestrator.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Libraries/">
+    <Project Path="src/Libraries/IntegrationBus.Shared/IntegrationBus.Shared.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/">
+    <Project Path="src/Services/IntegrationBus.AccountBalance.Service/IntegrationBus.AccountBalance.Service.csproj" />
+    <Project Path="src/Services/IntegrationBus.Compliance.Service/IntegrationBus.Compliance.Service.csproj" />
+    <Project Path="src/Services/IntegrationBus.CoreLedger.Service/IntegrationBus.CoreLedger.Service.csproj" />
+    <Project Path="src/Services/IntegrationBus.SagaOrchestrator.Service/IntegrationBus.SagaOrchestrator.Service.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IntegrationBus.AccountBalance.Service.Tests/IntegrationBus.AccountBalance.Service.Tests.csproj" />
+    <Project Path="tests/IntegrationBus.Analytics.Tests/IntegrationBus.Analytics.Tests.csproj" />
+    <Project Path="tests/IntegrationBus.Compliance.Service.Tests/IntegrationBus.Compliance.Service.Tests.csproj" />
+    <Project Path="tests/IntegrationBus.Processing.Api.Tests/IntegrationBus.Processing.Api.Tests.csproj" />
+    <Project Path="tests/IntegrationBus.SagaOrchestrator.Service.Tests/IntegrationBus.SagaOrchestrator.Service.Tests.csproj" />
+    <Project Path="tests/IntegrationBus.Shared.Tests/IntegrationBus.Shared.Tests.csproj" />
+  </Folder>
+</Solution>

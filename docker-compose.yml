@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   integration-bus-kafka:
-    image: apache/kafka:latest
+    image: apache/kafka:3.9.0
     container_name: integration-bus-kafka
     ports:
       - "9092:9092"
@@ -52,7 +50,7 @@ services:
 
   # Background container for automated Kafka topic initialization and provisioning
   integration-bus-kafka-provisioner:
-    image: apache/kafka:latest
+    image: apache/kafka:3.9.0
     container_name: integration-bus-kafka-provisioner
     entrypoint: [ "sh", "-c" ]
     command:
@@ -88,6 +86,11 @@ services:
         /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-release-failed
         /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-release-skipped
 
+        echo "Provisioning masked data security topics..."
+
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic account-balance-hold.security
+        /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic core-ledger-record-write.security
+
         echo "Infrastructure topic auto-provisioning pipeline completed successfully."
     depends_on:
       integration-bus-kafka:
@@ -100,7 +103,7 @@ services:
     container_name: integration-bus-redis
     command: redis-server --requirepass secret_password_123 --appendonly yes
     ports:
-      - "6379:6379"
+      - "63790:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "secret_password_123", "ping"]
       interval: 5s
@@ -139,6 +142,7 @@ services:
       - Kafka__BootstrapServers=integration-bus-kafka:9094
       - ReverseProxy__Clusters__processing-cluster__Destinations__http-destination__Address=http://integration-bus-processing-api:5201
       - ReverseProxy__Clusters__processing-cluster__Destinations__https-destination__Address=http://integration-bus-processing-api:5201
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://integration-bus-jaeger:4317
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console
@@ -146,11 +150,16 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+      - Serilog__WriteTo__2__Args__uri=http://integration-bus-loki:3100
     depends_on:
       integration-bus-db:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+      integration-bus-jaeger:
+        condition: service_started
+      integration-bus-loki:
+        condition: service_started
     networks:
       - integration-bus-network
     restart: unless-stopped
@@ -165,6 +174,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://integration-bus-jaeger:4317
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console
@@ -172,11 +182,16 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+      - Serilog__WriteTo__2__Args__uri=http://integration-bus-loki:3100
     depends_on:
       integration-bus-db:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+      integration-bus-jaeger:
+        condition: service_started
+      integration-bus-loki:
+        condition: service_started
     networks:
       - integration-bus-network
     restart: unless-stopped
@@ -192,6 +207,7 @@ services:
       - ASPNETCORE_URLS=http://+:6001
       - ConnectionStrings__SagaDb=Host=integration-bus-db;Port=5432;Database=saga_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://integration-bus-jaeger:4317
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console
@@ -199,6 +215,7 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+      - Serilog__WriteTo__2__Args__uri=http://integration-bus-loki:3100
     ports:
       - "6001:6001"
     depends_on:
@@ -206,6 +223,10 @@ services:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+      integration-bus-jaeger:
+        condition: service_started
+      integration-bus-loki:
+        condition: service_started
     networks:
       - integration-bus-network
     restart: unless-stopped
@@ -220,6 +241,9 @@ services:
       - ASPNETCORE_URLS=http://+:6002
       - ConnectionStrings__BalanceDb=Host=integration-bus-db;Port=5432;Database=accounting_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Redis__ConnectionString=integration-bus-redis:6379,password=secret_password_123
+      - MASKING_HMAC_SALT=integration-bus-local-dev-salt-change-me
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://integration-bus-jaeger:4317
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console
@@ -227,6 +251,7 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+      - Serilog__WriteTo__2__Args__uri=http://integration-bus-loki:3100
     ports:
       - "6002:6002"
     depends_on:
@@ -234,6 +259,12 @@ services:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+      integration-bus-redis:
+        condition: service_healthy
+      integration-bus-jaeger:
+        condition: service_started
+      integration-bus-loki:
+        condition: service_started
     networks:
       - integration-bus-network
     restart: unless-stopped
@@ -248,6 +279,7 @@ services:
       - ASPNETCORE_URLS=http://+:6003
       - ConnectionStrings__ComplianceDb=Host=integration-bus-db;Port=5432;Database=compliance_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://integration-bus-jaeger:4317
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console
@@ -255,6 +287,7 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+      - Serilog__WriteTo__2__Args__uri=http://integration-bus-loki:3100
     ports:
       - "6003:6003"
     depends_on:
@@ -262,6 +295,10 @@ services:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+      integration-bus-jaeger:
+        condition: service_started
+      integration-bus-loki:
+        condition: service_started
     networks:
       - integration-bus-network
     restart: unless-stopped
@@ -276,6 +313,9 @@ services:
       - ASPNETCORE_URLS=http://+:6004
       - ConnectionStrings__LedgerDb=Host=integration-bus-db;Port=5432;Database=ledger_db;Username=postgres;Password=postgres
       - Kafka__BootstrapServers=integration-bus-kafka:9094
+      - Redis__ConnectionString=integration-bus-redis:6379,password=secret_password_123
+      - MASKING_HMAC_SALT=integration-bus-local-dev-salt-change-me
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://integration-bus-jaeger:4317
       - Serilog__MinimumLevel__Default=Information
       - Serilog__MinimumLevel__Override__Microsoft=Warning
       - Serilog__WriteTo__0__Name=Console
@@ -283,6 +323,7 @@ services:
       - Serilog__WriteTo__1__Args__path=/app/logs/server-.log
       - Serilog__WriteTo__1__Args__rollingInterval=Day
       - Serilog__WriteTo__1__Args__outputTemplate={Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}
+      - Serilog__WriteTo__2__Args__uri=http://integration-bus-loki:3100
     ports:
       - "6004:6004"
     depends_on:
@@ -290,6 +331,12 @@ services:
         condition: service_healthy
       integration-bus-kafka-provisioner:
         condition: service_completed_successfully
+      integration-bus-redis:
+        condition: service_healthy
+      integration-bus-jaeger:
+        condition: service_started
+      integration-bus-loki:
+        condition: service_started
     networks:
       - integration-bus-network
     restart: unless-stopped
@@ -297,6 +344,8 @@ services:
   integration-bus-db:
     image: postgres
     container_name: integration-bus-db
+    # wal_level=logical + replication slots/senders are required for Debezium's pgoutput CDC plugin
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -332,9 +381,136 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - integration-bus-prometheus
+      - integration-bus-loki
+      - integration-bus-jaeger
+    networks:
+      - integration-bus-network
+
+  # Distributed tracing collector + UI, receives OTLP spans from every .NET service via gRPC (4317) / HTTP (4318)
+  integration-bus-jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: integration-bus-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - integration-bus-network
+
+  # Centralized log aggregation backend; services push structured logs directly via the Serilog.Sinks.Grafana.Loki sink
+  integration-bus-loki:
+    image: grafana/loki:3.1.0
+    container_name: integration-bus-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - integration-bus-loki-data:/loki
+    networks:
+      - integration-bus-network
+
+  # Real-Time Analytics Pipeline: Kafka Connect running the Debezium Postgres connector plugin,
+  # streaming WAL changes from accounting_db/compliance_db/ledger_db as CDC events onto Kafka topics.
+  integration-bus-kafka-connect:
+    image: debezium/connect:3.0.0.Final
+    container_name: integration-bus-kafka-connect
+    environment:
+      - BOOTSTRAP_SERVERS=integration-bus-kafka:9094
+      - GROUP_ID=integration-bus-kafka-connect
+      - CONFIG_STORAGE_TOPIC=connect-configs
+      - OFFSET_STORAGE_TOPIC=connect-offsets
+      - STATUS_STORAGE_TOPIC=connect-status
+      - CONFIG_STORAGE_REPLICATION_FACTOR=1
+      - OFFSET_STORAGE_REPLICATION_FACTOR=1
+      - STATUS_STORAGE_REPLICATION_FACTOR=1
+    ports:
+      - "8083:8083"
+    depends_on:
+      integration-bus-db:
+        condition: service_healthy
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    networks:
+      - integration-bus-network
+
+  # One-shot registrar: waits for the Kafka Connect REST API and registers the three Debezium Postgres connectors
+  integration-bus-debezium-registrar:
+    image: curlimages/curl:8.10.1
+    container_name: integration-bus-debezium-registrar
+    entrypoint: ["/bin/sh", "/scripts/register-connectors.sh"]
+    volumes:
+      - ./infrastructure/debezium:/connectors:ro
+      - ./infrastructure/debezium/register-connectors.sh:/scripts/register-connectors.sh:ro
+    depends_on:
+      - integration-bus-kafka-connect
+    networks:
+      - integration-bus-network
+
+  # OLAP analytics store: ingests CDC topics directly via the native Kafka table engine and flattens them
+  # into MergeTree tables through Materialized Views (see infrastructure/clickhouse/init.sql).
+  integration-bus-clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: integration-bus-clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      - CLICKHOUSE_DB=analytics
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./infrastructure/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - integration-bus-clickhouse-data:/var/lib/clickhouse
+    depends_on:
+      integration-bus-kafka-provisioner:
+        condition: service_completed_successfully
+    networks:
+      - integration-bus-network
+
+  # BI dashboards over the ClickHouse analytic cube
+  # One-shot: downloads the official ClickHouse driver plugin JAR that open-source Metabase does not bundle
+  integration-bus-metabase-driver-setup:
+    image: curlimages/curl:8.10.1
+    container_name: integration-bus-metabase-driver-setup
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ ! -f /plugins/clickhouse.metabase-driver.jar ]; then
+          curl -sSL -o /plugins/clickhouse.metabase-driver.jar \
+            https://github.com/ClickHouse/metabase-clickhouse-driver/releases/download/1.53.4/clickhouse.metabase-driver.jar
+        fi
+    volumes:
+      - integration-bus-metabase-plugins:/plugins
+    networks:
+      - integration-bus-network
+
+  integration-bus-metabase:
+    image: metabase/metabase:v0.51.9
+    container_name: integration-bus-metabase
+    ports:
+      - "3001:3000"
+    volumes:
+      - integration-bus-metabase-plugins:/plugins
+    depends_on:
+      integration-bus-clickhouse:
+        condition: service_started
+      integration-bus-metabase-driver-setup:
+        condition: service_completed_successfully
     networks:
       - integration-bus-network
 
 networks:
   integration-bus-network:
     driver: bridge
+
+volumes:
+  integration-bus-clickhouse-data:
+  integration-bus-loki-data:
+  integration-bus-metabase-plugins:

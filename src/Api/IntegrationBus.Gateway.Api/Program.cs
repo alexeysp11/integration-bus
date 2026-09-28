@@ -11,13 +11,17 @@ try
         .CreateLogger();
 
     builder.Services
+        .AddTelemetryResource("integration-bus-gateway-api")
         .AddCoreMetrics()
-        .AddHttpMetrics();
+        .AddHttpMetrics()
+        .AddDistributedTracing();
 
     builder.Logging.ClearProviders();
     builder.Logging.AddSerilog();
 
     builder.Services.AddOpenApi();
+
+    builder.Services.AddHealthChecks();
 
     builder.Services.AddReverseProxy()
         .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
@@ -31,6 +35,7 @@ try
 
     app.UseHttpsRedirection();
     app.MapReverseProxy();
+    app.MapHealthChecks("/health");
     app.UseMetricsScraping();
 
     await app.RunAsync();

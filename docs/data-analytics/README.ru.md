@@ -2,7 +2,7 @@
 
 [English](README.md) | [Русский](README.ru.md)
 
-Реализация по приоритетному описанию из `docs/roadmap.md` (Stage 4): **Kafka Connect + Debezium** для CDC-захвата
+Реализация по приоритетному описанию из [`docs/roadmap.md`](../roadmap.md) (Stage 4): **Kafka Connect + Debezium** для CDC-захвата
 изменений из Postgres, и нативный **ClickHouse Kafka Engine + Materialized Views** для заливки в OLAP (а не
 отдельный "ClickHouse Kafka Connect Sink"-коннектор — так поступил и `roadmap.md`, и это надёжнее: не требует
 стороннего Kafka Connect sink-плагина и официально поддерживается ClickHouse "из коробки").

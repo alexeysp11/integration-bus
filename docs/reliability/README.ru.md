@@ -16,7 +16,7 @@ hold-запись в журнал. Так как Npgsql по умолчанию 
 модель event sourcing не блокирует чтение баланса чем-то вроде `SELECT ... FOR UPDATE`, при **двух репликах** сервиса
 `account-balance-service`, обрабатывающих `HoldAccountBalance` для **одного и того же** счёта одновременно (Kafka не
 гарантирует, что оба сообщения попадут на одну и ту же партицию/реплику, так как партиционирование по `AccountId`
-пока не реализовано — см. `docs/roadmap.md`, Stage 6), возможен классический TOCTOU (time-of-check-to-time-of-use)
+пока не реализовано — см. [`docs/roadmap.md`](../roadmap.md), Stage 6), возможен классический TOCTOU (time-of-check-to-time-of-use)
 race:
 
 1. Реплика A читает баланс счёта: 100.

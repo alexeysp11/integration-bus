@@ -141,7 +141,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - [x] Integrate OpenTelemetry Tracing SDK into .NET services and explicitly register `.AddSource("MassTransit")` to listen to internal framework activity streams.
     - [x] Configure the OTLP exporter options within the service builder to push telemetry data via gRPC (`http://localhost:4317`) to the central collector.
     - [x] Provision a Jaeger `all-in-one` container in `docker-compose.yml` with OTLP ports enabled and map the web UI port (`16686`) for browser access.
-    - [ ] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans. _(code/infra in place; not yet verified end-to-end against a live `docker compose up` run — see `docs/observability/README.md` §5.)_
+    - [ ] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans. _(code/infra in place; not yet verified end-to-end against a live `docker compose up` run — see [`docs/observability/README.md`](observability/README.md) §5.)_
 * **Definition of Done:**
     - Jaeger UI visualizes interactive asynchronous waterfall graphs mapping the complete lifecycle of a single Saga.
     - Every network hop between `SagaOrchestrator` and processing services is captured as an interconnected child span under a single `TraceId`.
@@ -156,7 +156,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - [x] Install `Serilog.Sinks.Grafana.Loki` NuGet package across the entire microservice ecosystem.
     - [x] Configure the Serilog logging pipeline to append `.Enrich.FromLogContext()` and route structured JSON streams to the Loki endpoint.
     - [x] Ensure that active OTel `TraceId`/`SpanId` are automatically mapped into Loki log labels/fields (via `Serilog.Enrichers.Span`'s `WithSpan()` enricher).
-    - [ ] Configure Grafana to use Loki as a data source and verify the functionality of log-to-trace navigation panels. _(documented step-by-step in `docs/observability/README.md` §3.2 and §5; not yet clicked through against a live stack.)_
+    - [ ] Configure Grafana to use Loki as a data source and verify the functionality of log-to-trace navigation panels. _(documented step-by-step in [`docs/observability/README.md`](observability/README.md) §3.2 and §5; not yet clicked through against a live stack.)_
 * **Definition of Done:**
     - Microservice console footprints are minimal, with all structured application logs streaming directly into the Loki instance.
     - Querying a raw `CorrelationId` string inside the Grafana Explore panel aggregates multi-service execution logs chronologically.
@@ -198,8 +198,8 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Description:** Protect the Balance service from concurrency issues and race conditions under heavy load using Redis distributed locks, and migrate compliance validations into an expandable declarative JSON structure.
 *   **Todo List:**
     - [x] Add a `Redis` instance into the `docker-compose.yml` file. _(container already existed; now actually consumed by application code via `StackExchange.Redis`/`RedLock.net`.)_
-    - [x] Integrate `RedLock.net` inside `HoldAccountBalanceConsumer` (this codebase's equivalent of `HoldMoneyActivity`) to lock account IDs mid-transaction. See `docs/reliability/README.md`.
-    - [x] Install the `RulesEngine` NuGet package in `Compliance.Service` and load threshold definitions from a local JSON config (`Rules/compliance-rules.json`). See `docs/reliability/README.md` §4.
+    - [x] Integrate `RedLock.net` inside `HoldAccountBalanceConsumer` (this codebase's equivalent of `HoldMoneyActivity`) to lock account IDs mid-transaction. See [`docs/reliability/README.md`](reliability/README.md).
+    - [x] Install the `RulesEngine` NuGet package in `Compliance.Service` and load threshold definitions from a local JSON config (`Rules/compliance-rules.json`). See [`docs/reliability/README.md`](reliability/README.md) §4.
 *   **Definition of Done:**
     - Concurrent requests to the same account ID are queued/handled safely via Redis without balance race conditions.
     - Compliance service dynamically evaluates transactions based on externalized JSON rules.
@@ -218,8 +218,8 @@ This document outlines the complete iterative implementation plan for the `integ
     - [x] Create raw Staging tables in ClickHouse linked to Kafka engine topics.
     - [x] Implement ClickHouse `Materialized Views` to transform, join, and aggregate data streams into a flat analytic cube (`analytics.transaction_cube`).
 *   **Definition of Done:**
-    - Inserting data into transactional Postgres databases automatically streams data to ClickHouse in real-time with zero manual SQL selects. **Verified live** end-to-end (see `docs/data-analytics/README.md` §4) and covered by `tests/IntegrationBus.Analytics.Tests`.
-    - Metabase successfully connects to ClickHouse pre-aggregated data marts to render financial reports. Driver auto-provisioned; connection steps documented in `docs/data-analytics/README.md` §5.
+    - Inserting data into transactional Postgres databases automatically streams data to ClickHouse in real-time with zero manual SQL selects. **Verified live** end-to-end (see [`docs/data-analytics/README.md`](data-analytics/README.md) §4) and covered by `tests/IntegrationBus.Analytics.Tests`.
+    - Metabase successfully connects to ClickHouse pre-aggregated data marts to render financial reports. Driver auto-provisioned; connection steps documented in [`docs/data-analytics/README.md`](data-analytics/README.md) §5.
 
 ### 📌 Prod-to-Test Data Masking Pipeline
 *   **Status:** **`Pending ⏳`**

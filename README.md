@@ -7,7 +7,7 @@
 - [x] **Stage 1: Core Architecture & Async Saga** — ✅ *Done*
 - [x] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — ✅ *Done* (verified live end-to-end: a single `TraceId` spans all 6 services in Jaeger, correlated with Loki logs; see [`docs/observability/README.md`](docs/observability/README.md))
 - [x] **Stage 3: Reliability & Integration Testing** — ✅ *Done* (distributed locks + rules engine, see [`docs/reliability/README.md`](docs/reliability/README.md))
-- [x] **Stage 4: Real-Time Analytics (DWH) & Masking** — ✅ *Done* (Debezium/ClickHouse/Metabase pipeline verified live, see [`docs/data-analytics/README.md`](docs/data-analytics/README.md); infrastructure-level HMAC data masking pipeline also done, see [`docs/reliability/README.md`](docs/reliability/README.md))
+- [x] **Stage 4: Real-Time Analytics (DWH) & Masking** — ✅ *Done* (Debezium/ClickHouse/Metabase pipeline, see [`docs/data-analytics/README.md`](docs/data-analytics/README.md); infrastructure-level HMAC data masking pipeline also done, see [`docs/reliability/README.md`](docs/reliability/README.md))
 - [x] **Stage 5: Cloud-Native Migration (Kubernetes)** — ✅ *Done* (see [`docs/k8s-deployment/README.md`](docs/k8s-deployment/README.md))
 - [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending* (out of scope for the current production-readiness pass)
 

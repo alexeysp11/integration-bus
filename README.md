@@ -1,8 +1,5 @@
 # 🚌 integration-bus
 
-> **✅ Project Status: Production-Ready Enterprise System (Stages 1–5 complete)**  
-> This repository represents a live, step-by-step architectural evolution. Features documented below are being rolled out incrementally according to the project roadmap.
-
 ### 📊 Implementation Progress
 - [x] **Stage 1: Core Architecture & Async Saga** — ✅ *Done*
 - [x] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — ✅ *Done* (verified live end-to-end: a single `TraceId` spans all 6 services in Jaeger, correlated with Loki logs; see [`docs/observability/README.md`](docs/observability/README.md))
@@ -15,7 +12,7 @@
 *   🗺️ **[Project Evolution Roadmap](docs/roadmap.md)** — Detailed task breakdowns, Done criteria, and milestones.
 *   🚀 **[API Specifications & Verification Rules](docs/business-logic/api-specifications.md)** — HTTP contracts, JSON payload schemas, FluentValidation constraints, and manual testing procedures.
 *   🎯 **[Black-Box Validation Guide](docs/business-logic/validation-guide.md)** — End-to-end scenario proving the whole stack works: HTTP → Saga → Observability → Analytics.
-*   ☸️ **[Kubernetes Deployment](docs/k8s-deployment/README.md)** — Full stack as one Helm chart; see [`GETTING-STARTED.ru.md`](docs/k8s-deployment/GETTING-STARTED.ru.md) for a zero-Kubernetes-experience walkthrough.
+*   ☸️ **[Kubernetes Deployment](docs/k8s-deployment/README.md)** — Full stack as one Helm chart; see [`GETTING-STARTED.md`](docs/k8s-deployment/GETTING-STARTED.md) for a zero-Kubernetes-experience walkthrough.
 *   📝 **[Documentation Guidelines](docs/documentation-guidelines.md)** — Strict formatting, language separation, and engineering style rules for human and AI-assisted writing.
 *   ⚙️ **[CI Pipeline](.github/workflows/ci.yml)** — GitHub Actions: restore, build (Release), full test run on every push/PR to `main`.
 *   📐 **[Git Contribution & Commit Guidelines](CONTRIBUTING.md)** — Semantic commit rules, branching strategy, and issue tracking linkage.

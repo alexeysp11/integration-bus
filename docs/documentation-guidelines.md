@@ -35,3 +35,17 @@ This document establishes strict constraints for AI models when creating, updati
 ### 6. Actionable Troubleshooting Over Bug History
 * **Rule:** If edge cases, failures, or critical bugs discovered during system testing need to be documented, do not present them as a retrospective story of past errors.
 * **Constraint:** Convert all past issues into **"Troubleshooting"**, **"Resilience Configuration"**, or **"Runbooks"** sections. Provide clear, actionable recipes, bash commands, or configuration snippets showing how the user can prevent or resolve these conditions in a production environment.
+
+### 7. Zero Information Leakage & Security (No Compromising Data)
+*   **Rule:** Documentation must be strictly clean and sanitized. Never include any personal information, secrets, credentials, API keys, or links to files on your local machine.
+*   **Constraint:** All configuration examples, connection strings, and file paths must use generic, production-like placeholders (e.g., `host.docker.internal`, `admin`, `secret_password`, or strictly relative repository paths).
+
+### 8. Strict Intellectual Honesty (No Empty Promises or Pretentious Claims)
+*   **Rule:** Describe the current actual capabilities of the project without marketing exaggeration. Do not make claims about states or architectures that are not yet fully implemented.
+*   **Constraint:** If the project targets a specific standard but has not fully achieved it yet, state this transparently or omit the claim entirely. 
+    *   *Correct approach:* "Our goal is to build an Advanced Cloud-Native platform. We are currently executing the [Roadmap](roadmap.md) to reach this state." (Or do not mention "Advanced Cloud-Native" at all).
+    *   *Production-Ready Boundary:* You may emphasize that we strictly strive for **production-ready quality** in both code and documentation, but you must **never** state that the product itself is currently a finished, production-ready enterprise solution.
+
+### 9. High-Quality Presentation (Overcoming Critical Skepticism)
+*   **Rule:** The project structure and documentation must be designed to impress even the most critical, hyper-focused, and skeptical reviewers.
+*   **Constraint:** The quality of the layouts, technical depth, diagrams, and absolute absence of formatting errors must ensure that if a reviewer opens this repository looking for flaws, they instead find a highly polished, professional, and pleasant reading experience that exceeds industry standards.

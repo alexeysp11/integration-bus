@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: integration-bus-kafka
+spec:
+  serviceName: integration-bus-kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-kafka
+  template:
+    metadata:
+      labels:
+        app: integration-bus-kafka
+    spec:
+      containers:
+        - name: kafka
+          image: {{ .Values.kafka.image }}
+          env:
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx512M -Xms512M"
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: broker,controller
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: 1@integration-bus-kafka:9093
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: CONTROLLER
+            - name: KAFKA_LISTENERS
+              value: PLAINTEXT://:9094,EXTERNAL://:9092,CONTROLLER://:9093
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: PLAINTEXT://integration-bus-kafka:9094,EXTERNAL://localhost:9092
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: PLAINTEXT
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "0"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+          resources:
+            {{- .Values.kafkaResources | toYaml | nindent 12 }}
+          ports:
+            - containerPort: 9092
+            - containerPort: 9093
+            - containerPort: 9094
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/kafka-logs
+          readinessProbe:
+            exec:
+              command: ["/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9094"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9094"]
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.kafka.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-kafka
+spec:
+  # Headless + publishNotReadyAddresses is required for a single-broker KRaft quorum: the broker
+  # dials its own controller port (9093) through this exact Service name during startup, before it
+  # has ever passed a readiness probe. A normal ClusterIP Service only load-balances to Ready
+  # endpoints, which would deadlock the broker against itself (it can never become Ready without
+  # first reaching its own controller port). docker-compose never hit this because Docker's
+  # embedded DNS resolves container names straight to the container IP, with no health gating.
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: integration-bus-kafka
+  ports:
+    - name: external
+      port: 9092
+      targetPort: 9092
+    - name: controller
+      port: 9093
+      targetPort: 9093
+    - name: plaintext
+      port: 9094
+      targetPort: 9094
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: integration-bus-kafka-provisioner
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-provisioner
+          image: {{ .Values.kafka.image }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for Kafka broker to reach a healthy operational state..."
+              until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server integration-bus-kafka:9094 >/dev/null 2>&1; do
+                sleep 2
+              done
+
+              echo "Kafka broker is ready. Provisioning total infrastructure topic topologies..."
+
+              for topic in \
+                saga-transaction-start \
+                account-balance-hold account-balance-hold-passed account-balance-hold-failed \
+                compliance-limits-check compliance-limits-check-passed compliance-limits-check-failed \
+                core-ledger-record-write core-ledger-record-write-passed core-ledger-record-write-failed \
+                account-balance-confirm account-balance-confirm-passed account-balance-confirm-failed \
+                accounting-balance-topup accounting-balance-topup-passed accounting-balance-topup-failed \
+                account-database-seed account-database-seed-passed account-database-seed-failed \
+                account-balance-release account-balance-release-passed account-balance-release-failed account-balance-release-skipped \
+                account-balance-hold.security core-ledger-record-write.security \
+              ; do
+                /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic "$topic"
+              done
+
+              echo "Infrastructure topic auto-provisioning pipeline completed successfully."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: integration-bus-kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-kafka-ui
+  template:
+    metadata:
+      labels:
+        app: integration-bus-kafka-ui
+    spec:
+      containers:
+        - name: kafka-ui
+          image: {{ .Values.kafkaUi.image }}
+          env:
+            - name: KAFKA_CLUSTERS_0_NAME
+              value: local-cluster
+            - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+              value: integration-bus-kafka:9094
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-kafka-ui
+spec:
+  type: NodePort
+  selector:
+    app: integration-bus-kafka-ui
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: {{ .Values.kafkaUi.nodePort }}

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using ClickHouse.Client.ADO;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Images;
 using DotNet.Testcontainers.Networks;
 using FluentAssertions;
 using Npgsql;
@@ -14,21 +15,24 @@ namespace IntegrationBus.Analytics.Tests;
 
 /// <summary>
 /// End-to-end proof of the real-time analytics pipeline: a row written to Postgres is captured by a Debezium
-/// Postgres source connector running inside Kafka Connect, streamed onto a Kafka CDC topic, and ingested by
-/// ClickHouse's native Kafka table engine into a queryable MergeTree table via a Materialized View -- with zero
-/// application code involved, mirroring exactly the production wiring in <c>docker-compose.yml</c> and
-/// <c>infrastructure/clickhouse/init.sql</c>.
+/// Postgres source connector, streamed onto a Kafka CDC topic, and delivered into a ClickHouse ReplacingMergeTree
+/// table by the official ClickHouse Kafka Connect Sink connector -- with zero application code involved,
+/// mirroring exactly the production wiring in <c>docker-compose.yml</c>, <c>infrastructure/clickhouse/init.sql</c>
+/// and <c>infrastructure/clickhouse-sink/*.json</c>. See <c>docs/data-loading.ru.md</c> for why the sink connector
+/// (batched, acknowledged-before-offset-commit writes) was chosen over ClickHouse's native row-by-row Kafka engine.
 /// </summary>
 public sealed class LedgerCdcPipelineTests : IAsyncLifetime
 {
-    private const string DebeziumConnectImage = "debezium/connect:3.0.0.Final";
     private const string KafkaNetworkAlias = "kafka";
     private const string PostgresNetworkAlias = "postgres";
+    private const string ClickHouseNetworkAlias = "clickhouse";
+    private const string ClickHousePassword = "clickhouse_dev_password";
     private const int KafkaConnectPort = 8083;
 
     private INetwork _network = null!;
     private PostgreSqlContainer _postgres = null!;
     private IContainer _kafka = null!;
+    private IFutureDockerImage _kafkaConnectImage = null!;
     private IContainer _kafkaConnect = null!;
     private ClickHouseContainer _clickHouse = null!;
 
@@ -73,15 +77,28 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
         // more importantly, its older librdkafka silently fails to consume from a modern Kafka broker.
         _clickHouse = new ClickHouseBuilder("clickhouse/clickhouse-server:24.8")
             .WithNetwork(_network)
-            .WithNetworkAliases("clickhouse")
+            .WithNetworkAliases(ClickHouseNetworkAlias)
+            .WithUsername("default")
+            .WithPassword(ClickHousePassword)
+            .WithEnvironment("CLICKHOUSE_PASSWORD", ClickHousePassword)
             .Build();
+
+        // Builds the exact same custom image docker-compose.yml builds for integration-bus-kafka-connect: the
+        // official Debezium Connect image plus the official ClickHouse Kafka Connect Sink plugin.
+        _kafkaConnectImage = new ImageFromDockerfileBuilder()
+            .WithDockerfileDirectory(CommonDirectoryPath.GetGitDirectory(), "infrastructure/kafka-connect")
+            .WithDockerfile("Dockerfile")
+            .WithDeleteIfExists(false)
+            .Build();
+
+        await _kafkaConnectImage.CreateAsync();
 
         await Task.WhenAll(
             _postgres.StartAsync(),
             _kafka.StartAsync(),
             _clickHouse.StartAsync());
 
-        _kafkaConnect = new ContainerBuilder(DebeziumConnectImage)
+        _kafkaConnect = new ContainerBuilder(_kafkaConnectImage)
             .WithNetwork(_network)
             .WithNetworkAliases("kafka-connect")
             .WithEnvironment("BOOTSTRAP_SERVERS", $"{KafkaNetworkAlias}:9094")
@@ -100,8 +117,9 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
         await _kafkaConnect.StartAsync();
 
         await CreateLedgerEntriesTableAsync();
-        await RegisterDebeziumConnectorAsync();
-        await CreateClickHouseAnalyticsSchemaAsync();
+        await RegisterDebeziumSourceConnectorAsync();
+        await CreateClickHouseDestinationTableAsync();
+        await RegisterClickHouseSinkConnectorAsync();
     }
 
     public async Task DisposeAsync()
@@ -111,6 +129,7 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
         await _kafka.DisposeAsync();
         await _postgres.DisposeAsync();
         await _network.DisposeAsync();
+        await _kafkaConnectImage.DisposeAsync();
     }
 
     private async Task CreateLedgerEntriesTableAsync()
@@ -119,23 +138,30 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
         await connection.OpenAsync();
 
         await using NpgsqlCommand command = connection.CreateCommand();
+        // Matches the real EF Core migration exactly (src/Services/IntegrationBus.CoreLedger.Service/Migrations):
+        // "timestamp with time zone", not a plain "timestamp" -- Debezium serializes the former as an ISO-8601
+        // string (ZonedTimestamp semantic type) and the latter as raw epoch-millis (Connect's Timestamp logical
+        // type), which matters because the sink connector's date_time_input_format=best_effort only applies to
+        // the string form.
         command.CommandText = """
             CREATE TABLE "LedgerEntries" (
                 "Id" BIGSERIAL PRIMARY KEY,
                 "TransactionId" UUID NOT NULL,
                 "Amount" NUMERIC NOT NULL,
-                "CreatedAt" TIMESTAMP NOT NULL
+                "CreatedAt" TIMESTAMP WITH TIME ZONE NOT NULL
             );
             """;
         await command.ExecuteNonQueryAsync();
     }
 
-    private async Task RegisterDebeziumConnectorAsync()
+    private HttpClient CreateKafkaConnectClient() => new()
     {
-        using HttpClient httpClient = new()
-        {
-            BaseAddress = new Uri($"http://{_kafkaConnect.Hostname}:{_kafkaConnect.GetMappedPublicPort(KafkaConnectPort)}")
-        };
+        BaseAddress = new Uri($"http://{_kafkaConnect.Hostname}:{_kafkaConnect.GetMappedPublicPort(KafkaConnectPort)}")
+    };
+
+    private async Task RegisterDebeziumSourceConnectorAsync()
+    {
+        using HttpClient httpClient = CreateKafkaConnectClient();
 
         object connectorConfig = new
         {
@@ -171,30 +197,51 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task CreateClickHouseAnalyticsSchemaAsync()
+    private async Task RegisterClickHouseSinkConnectorAsync()
+    {
+        using HttpClient httpClient = CreateKafkaConnectClient();
+
+        object connectorConfig = new
+        {
+            name = "clickhouse-sink-ledger-test",
+            config = new Dictionary<string, string>
+            {
+                ["connector.class"] = "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+                ["tasks.max"] = "1",
+                ["topics"] = "cdc.ledger.public.LedgerEntries",
+                ["topic2TableMap"] = "cdc.ledger.public.LedgerEntries=ledger_entries",
+                ["hostname"] = ClickHouseNetworkAlias,
+                ["port"] = "8123",
+                ["database"] = "analytics",
+                ["username"] = "default",
+                ["password"] = ClickHousePassword,
+                ["ssl"] = "false",
+                ["exactlyOnce"] = "false",
+                // The plugin's default V1 client fails to ping this ClickHouse version; V2 is the modern,
+                // actively maintained client and is what production uses (see infrastructure/clickhouse-sink/*.json).
+                ["client_version"] = "V2",
+                // ClickHouse's strict (non-best-effort) DateTime64 parser rejects Debezium's ISO-8601 timestamps
+                // (e.g. "2026-03-14T08:30:00.000000Z") without this setting.
+                ["clickhouseSettings"] = "date_time_input_format=best_effort",
+                ["key.converter"] = "org.apache.kafka.connect.json.JsonConverter",
+                ["key.converter.schemas.enable"] = "false",
+                ["value.converter"] = "org.apache.kafka.connect.json.JsonConverter",
+                ["value.converter.schemas.enable"] = "false",
+                ["errors.tolerance"] = "none",
+                ["errors.log.enable"] = "true"
+            }
+        };
+
+        HttpResponseMessage response = await httpClient.PostAsJsonAsync("/connectors", connectorConfig);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task CreateClickHouseDestinationTableAsync()
     {
         await using ClickHouseConnection connection = new(_clickHouse.GetConnectionString());
         await connection.OpenAsync();
 
         await ExecuteAsync(connection, "CREATE DATABASE IF NOT EXISTS analytics");
-
-        await ExecuteAsync(connection, $"""
-            CREATE TABLE analytics.ledger_entries_queue
-            (
-                Id Int64,
-                TransactionId UUID,
-                Amount String,
-                CreatedAt String,
-                __deleted String
-            )
-            ENGINE = Kafka
-            SETTINGS
-                kafka_broker_list = '{KafkaNetworkAlias}:9094',
-                kafka_topic_list = 'cdc.ledger.public.LedgerEntries',
-                kafka_group_name = 'clickhouse-ledger-entries-test',
-                kafka_format = 'JSONEachRow',
-                kafka_skip_broken_messages = 5
-            """);
 
         await ExecuteAsync(connection, """
             CREATE TABLE analytics.ledger_entries
@@ -202,23 +249,13 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
                 Id Int64,
                 TransactionId UUID,
                 Amount Decimal64(4),
-                CreatedAt DateTime64(6)
+                CreatedAt DateTime64(6),
+                __deleted String DEFAULT 'false',
+                IngestedAtUtc DateTime DEFAULT now()
             )
-            ENGINE = MergeTree
+            ENGINE = ReplacingMergeTree
             ORDER BY (TransactionId, Id)
-            """);
-
-        await ExecuteAsync(connection, """
-            CREATE MATERIALIZED VIEW analytics.ledger_entries_mv
-            TO analytics.ledger_entries
-            AS
-            SELECT
-                Id,
-                TransactionId,
-                toDecimal64(Amount, 4) AS Amount,
-                parseDateTime64BestEffort(CreatedAt, 6) AS CreatedAt
-            FROM analytics.ledger_entries_queue
-            WHERE __deleted = 'false'
+            SETTINGS non_replicated_deduplication_window = 100
             """);
     }
 
@@ -226,36 +263,18 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
     {
         System.Text.StringBuilder diagnostics = new();
 
-        try
+        using HttpClient httpClient = CreateKafkaConnectClient();
+        foreach (string connectorName in new[] { "ledger-db-connector-test", "clickhouse-sink-ledger-test" })
         {
-            using HttpClient httpClient = new()
+            try
             {
-                BaseAddress = new Uri($"http://{_kafkaConnect.Hostname}:{_kafkaConnect.GetMappedPublicPort(KafkaConnectPort)}")
-            };
-            string connectorStatus = await httpClient.GetStringAsync("/connectors/ledger-db-connector-test/status");
-            diagnostics.AppendLine($"Connector status: {connectorStatus}");
-        }
-        catch (Exception ex)
-        {
-            diagnostics.AppendLine($"Failed to fetch connector status: {ex.Message}");
-        }
-
-        try
-        {
-            await using ClickHouseConnection connection = new(_clickHouse.GetConnectionString());
-            await connection.OpenAsync();
-
-            await using ClickHouseCommand command = connection.CreateCommand();
-            command.CommandText = "SELECT database, table, exceptions.text[1] FROM system.kafka_consumers WHERE database = 'analytics'";
-            await using System.Data.Common.DbDataReader reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                diagnostics.AppendLine($"kafka_consumers[{reader.GetString(0)}.{reader.GetString(1)}] lastError={(reader.IsDBNull(2) ? "<none>" : reader.GetString(2))}");
+                string connectorStatus = await httpClient.GetStringAsync($"/connectors/{connectorName}/status");
+                diagnostics.AppendLine($"Connector '{connectorName}' status: {connectorStatus}");
             }
-        }
-        catch (Exception ex)
-        {
-            diagnostics.AppendLine($"Failed to query system.kafka_consumers: {ex.Message}");
+            catch (Exception ex)
+            {
+                diagnostics.AppendLine($"Failed to fetch status for '{connectorName}': {ex.Message}");
+            }
         }
 
         try
@@ -284,11 +303,11 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task InsertingPostgresRow_ShouldStreamThroughDebeziumIntoClickHouseWithIdenticalValues()
+    public async Task InsertingPostgresRow_ShouldStreamThroughDebeziumAndTheClickHouseSinkConnectorWithIdenticalValues()
     {
         Guid transactionId = Guid.NewGuid();
         const decimal expectedAmount = 1234.5678m;
-        DateTime createdAt = new(2026, 3, 14, 8, 30, 0, DateTimeKind.Utc);
+        DateTime createdAt = new DateTime(2026, 3, 14, 8, 30, 0, DateTimeKind.Utc).AddTicks(1234560);
 
         await using (NpgsqlConnection connection = new(_postgres.GetConnectionString()))
         {
@@ -315,7 +334,10 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
                 await connection.OpenAsync();
 
                 await using ClickHouseCommand command = connection.CreateCommand();
-                command.CommandText = $"SELECT Amount, CreatedAt FROM analytics.ledger_entries WHERE TransactionId = '{transactionId}'";
+                // CreatedAt is read back as a string: ClickHouse.Client's ADO DateTime64(6) reader mis-scales
+                // sub-millisecond precision, which is a client-library quirk, not a replication bug -- parsing
+                // ClickHouse's own canonical text representation sidesteps it entirely.
+                command.CommandText = $"SELECT Amount, toString(CreatedAt) FROM analytics.ledger_entries WHERE TransactionId = '{transactionId}'";
 
                 await using System.Data.Common.DbDataReader reader = await command.ExecuteReaderAsync();
 
@@ -324,7 +346,10 @@ public sealed class LedgerCdcPipelineTests : IAsyncLifetime
                     throw new InvalidOperationException("Row has not replicated to ClickHouse yet.");
                 }
 
-                replicatedRow = (reader.GetDecimal(0), reader.GetDateTime(1));
+                DateTime createdAtUtc = DateTime.SpecifyKind(
+                    DateTime.Parse(reader.GetString(1), System.Globalization.CultureInfo.InvariantCulture),
+                    DateTimeKind.Utc);
+                replicatedRow = (reader.GetDecimal(0), createdAtUtc);
             });
         }
         catch (Exception ex)

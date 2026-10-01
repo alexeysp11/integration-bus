@@ -1,0 +1,187 @@
+# Default values for the integration-bus Helm chart.
+# Every image below is expected to already exist on the Kind node (see deploy/k8s/README.md:
+# `docker compose build` + `kind load docker-image`) -- this chart does not push to or pull
+# from any registry, matching the project's "everything comes up via a single compose/helm
+# command, no manual steps" rule.
+
+imagePullPolicy: IfNotPresent
+
+# Applied to the 6 .NET app services and the 3 core infra StatefulSets (Kafka/Postgres/Redis) --
+# the components the Stage 5 Definition of Done explicitly names. Auxiliary tooling (Kafka UI,
+# Redis Commander, Grafana/Prometheus/Jaeger/Loki, Metabase) deliberately keeps no limits for now.
+appResources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+kafkaResources:
+  requests:
+    cpu: 250m
+    memory: 640Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+postgresResources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+redisResources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 192Mi
+
+secrets:
+  postgresPassword: postgres
+  redisPassword: secret_password_123
+  clickhousePassword: clickhouse_dev_password
+  maskingHmacSalt: integration-bus-local-dev-salt-change-me
+
+postgres:
+  image: postgres:16
+  storageSize: 1Gi
+
+redis:
+  image: redis:alpine
+  storageSize: 256Mi
+
+kafka:
+  image: apache/kafka:3.9.0
+  storageSize: 1Gi
+
+kafkaUi:
+  image: provectuslabs/kafka-ui:latest
+  nodePort: 30080
+
+redisCommander:
+  image: ghcr.io/joeferner/redis-commander:latest
+  nodePort: 30082
+
+kafkaConnect:
+  image: integration-bus-integration-bus-kafka-connect:latest
+  nodePort: 30083
+
+clickhouse:
+  image: clickhouse/clickhouse-server:24.8
+  storageSize: 2Gi
+
+metabase:
+  image: metabase/metabase:v0.51.9
+  driverUrl: https://github.com/ClickHouse/metabase-clickhouse-driver/releases/download/1.53.4/clickhouse.metabase-driver.jar
+  nodePort: 30001
+
+prometheus:
+  image: prom/prometheus:v2.51.0
+  nodePort: 30090
+
+grafana:
+  image: grafana/grafana:11.1.0
+  adminPassword: admin
+  nodePort: 30000
+
+jaeger:
+  image: jaegertracing/all-in-one:1.62.0
+  uiNodePort: 30686
+
+loki:
+  image: grafana/loki:3.1.0
+  storageSize: 512Mi
+
+# Shared environment, identical to every .NET service's Serilog/OTel block in docker-compose.yml.
+commonEnv:
+  - name: ASPNETCORE_ENVIRONMENT
+    value: Development
+  - name: Kafka__BootstrapServers
+    value: integration-bus-kafka:9094
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: http://integration-bus-jaeger:4317
+  - name: Serilog__MinimumLevel__Default
+    value: Information
+  - name: Serilog__MinimumLevel__Override__Microsoft
+    value: Warning
+  - name: Serilog__WriteTo__0__Name
+    value: Console
+  - name: Serilog__WriteTo__1__Name
+    value: File
+  - name: Serilog__WriteTo__1__Args__path
+    value: /app/logs/server-.log
+  - name: Serilog__WriteTo__1__Args__rollingInterval
+    value: Day
+  - name: Serilog__WriteTo__1__Args__outputTemplate
+    value: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"
+  - name: Serilog__WriteTo__2__Args__uri
+    value: http://integration-bus-loki:3100
+
+# One entry per .NET workload. `port` is the container's real listen port (see each service's
+# Kestrel config / ASPNETCORE_URLS in docker-compose.yml); `nodePort` exposes it on the Kind
+# node exactly like the matching docker-compose host port (see deploy/k8s/kind/kind-cluster.yaml).
+services:
+  gateway-api:
+    image: integration-bus-integration-bus-gateway-api:latest
+    port: 8080
+    nodePort: 30038
+    extraEnv:
+      - name: ReverseProxy__Clusters__processing-cluster__Destinations__http-destination__Address
+        value: http://integration-bus-processing-api:5201
+      - name: ReverseProxy__Clusters__processing-cluster__Destinations__https-destination__Address
+        value: http://integration-bus-processing-api:5201
+
+  processing-api:
+    image: integration-bus-integration-bus-processing-api:latest
+    port: 5201
+    nodePort: 30201
+    extraEnv: []
+
+  saga-orchestrator-service:
+    image: integration-bus-integration-bus-saga-orchestrator-service:latest
+    port: 6001
+    nodePort: 30061
+    extraEnv:
+      - name: ASPNETCORE_URLS
+        value: http://+:6001
+      - name: ConnectionStrings__SagaDb
+        value: Host=integration-bus-db;Port=5432;Database=saga_db;Username=postgres;Password=postgres
+
+  account-balance-service:
+    image: integration-bus-integration-bus-account-balance-service:latest
+    port: 6002
+    nodePort: 30062
+    extraEnv:
+      - name: ASPNETCORE_URLS
+        value: http://+:6002
+      - name: ConnectionStrings__BalanceDb
+        value: Host=integration-bus-db;Port=5432;Database=accounting_db;Username=postgres;Password=postgres
+      - name: Redis__ConnectionString
+        value: integration-bus-redis:6379,password=$(REDIS_PASSWORD)
+
+  compliance-service:
+    image: integration-bus-integration-bus-compliance-service:latest
+    port: 6003
+    nodePort: 30063
+    extraEnv:
+      - name: ASPNETCORE_URLS
+        value: http://+:6003
+      - name: ConnectionStrings__ComplianceDb
+        value: Host=integration-bus-db;Port=5432;Database=compliance_db;Username=postgres;Password=postgres
+
+  core-ledger-service:
+    image: integration-bus-integration-bus-core-ledger-service:latest
+    port: 6004
+    nodePort: 30064
+    extraEnv:
+      - name: ASPNETCORE_URLS
+        value: http://+:6004
+      - name: ConnectionStrings__LedgerDb
+        value: Host=integration-bus-db;Port=5432;Database=ledger_db;Username=postgres;Password=postgres
+      - name: Redis__ConnectionString
+        value: integration-bus-redis:6379,password=$(REDIS_PASSWORD)

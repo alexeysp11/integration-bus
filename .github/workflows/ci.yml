@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore IntegrationBus.slnx
+
+      - name: Build solution (Release)
+        run: dotnet build IntegrationBus.slnx --configuration Release --no-restore
+
+      # Several test projects (AccountBalance, Compliance, SagaOrchestrator, Analytics) spin up real
+      # Postgres/Redis/Kafka/ClickHouse containers via Testcontainers. ubuntu-latest runners ship Docker
+      # pre-installed, so these run exactly as they do on a local developer machine -- no extra setup needed.
+      - name: Run unit and integration tests
+        run: dotnet test IntegrationBus.slnx --configuration Release --no-build --verbosity normal

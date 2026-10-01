@@ -18,5 +18,10 @@ public enum ReleaseAccountBalanceReason
     /// <summary>
     /// The ledger infrastructure failed to record the final transaction record inside the Core Ledger service.
     /// </summary>
-    LedgerWriteFailure = 2
+    LedgerWriteFailure = 2,
+
+    /// <summary>
+    /// The Accounting service failed to finalize the double-entry confirmation after the ledger record was committed.
+    /// </summary>
+    AccountingConfirmationFailure = 3
 }

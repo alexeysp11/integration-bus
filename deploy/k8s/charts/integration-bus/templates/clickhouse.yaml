@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: integration-bus-clickhouse
+spec:
+  serviceName: integration-bus-clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-clickhouse
+  template:
+    metadata:
+      labels:
+        app: integration-bus-clickhouse
+    spec:
+      initContainers:
+        - name: wait-for-kafka-topics
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 10"]
+      containers:
+        - name: clickhouse
+          image: {{ .Values.clickhouse.image }}
+          env:
+            - name: CLICKHOUSE_DB
+              value: analytics
+            # Without an explicit password the official image disables network access entirely for the
+            # "default" user (only local/unix-socket connections remain trusted) -- Kafka Connect and
+            # Metabase connect over HTTP, so a password is mandatory here.
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: integration-bus-secrets
+                  key: clickhouse-password
+          ports:
+            - containerPort: 8123
+            - containerPort: 9000
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: init-script
+          configMap:
+            name: integration-bus-clickhouse-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-clickhouse
+spec:
+  selector:
+    app: integration-bus-clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000

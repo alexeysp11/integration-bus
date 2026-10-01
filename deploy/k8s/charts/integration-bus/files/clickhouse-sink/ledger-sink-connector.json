@@ -1,0 +1,24 @@
+{
+  "name": "clickhouse-sink-ledger",
+  "config": {
+    "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+    "tasks.max": "1",
+    "topics": "cdc.ledger.public.LedgerEntries",
+    "topic2TableMap": "cdc.ledger.public.LedgerEntries=ledger_entries",
+    "hostname": "integration-bus-clickhouse",
+    "port": "8123",
+    "database": "analytics",
+    "username": "default",
+    "password": "clickhouse_dev_password",
+    "ssl": "false",
+    "exactlyOnce": "false",
+    "clickhouseSettings": "date_time_input_format=best_effort",
+    "client_version": "V2",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "errors.tolerance": "none",
+    "errors.log.enable": "true"
+  }
+}

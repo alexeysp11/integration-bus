@@ -29,6 +29,7 @@
     <Project Path="tests/IntegrationBus.AccountBalance.Service.Tests/IntegrationBus.AccountBalance.Service.Tests.csproj" />
     <Project Path="tests/IntegrationBus.Analytics.Tests/IntegrationBus.Analytics.Tests.csproj" />
     <Project Path="tests/IntegrationBus.Compliance.Service.Tests/IntegrationBus.Compliance.Service.Tests.csproj" />
+    <Project Path="tests/IntegrationBus.CoreLedger.Service.Tests/IntegrationBus.CoreLedger.Service.Tests.csproj" />
     <Project Path="tests/IntegrationBus.Processing.Api.Tests/IntegrationBus.Processing.Api.Tests.csproj" />
     <Project Path="tests/IntegrationBus.SagaOrchestrator.Service.Tests/IntegrationBus.SagaOrchestrator.Service.Tests.csproj" />
     <Project Path="tests/IntegrationBus.Shared.Tests/IntegrationBus.Shared.Tests.csproj" />

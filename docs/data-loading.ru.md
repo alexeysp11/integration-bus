@@ -18,3 +18,16 @@
 - ClickHouse отвечает: HTTP 200 OK (данные на диске).Только после этого коннектор отправляет в Kafka команду Commit Offset.
 
 Если коннектор или сеть упадут в процессе (на шаге 3), оффсет в Кафке останется старым. После перезапуска коннектор начнет читать лог с того же места и накат повторится. Мы получаем гарантию At-Least-Once (минимум один раз). А так как в ClickHouse мы будем использовать движки семейства `ReplacingMergeTree` или `SummingMergeTree`, дубликаты строк автоматически схлопнутся по первичному ключу (TransactionId) при мерже кусков. Итог — идеальная консистентность (Eventual Consistency).
+
+---
+
+## ✅ Решение принято и реализовано
+
+Выбран официальный **Kafka Connect ClickHouse Sink Connector** (`ClickHouse/clickhouse-kafka-connect`), как описано
+выше. Таблицы в ClickHouse — `ReplacingMergeTree` с `non_replicated_deduplication_window` (локальный, нереплицированный
+аналог блочной дедупликации, достаточный для single-node инстанса из этого docker-compose).
+
+Подробности реализации, архитектурная схема и **четыре неочевидные проблемы совместимости**, с которыми пришлось
+разобраться при реальном разворачивании (несовместимость `apache/kafka:latest` с librdkafka ClickHouse, отключение
+сетевого доступа `default`-пользователя без `CLICKHOUSE_PASSWORD`, баг `client_version=V1` плагина при ping(),
+и разница сериализации `TIMESTAMP` vs `TIMESTAMP WITH TIME ZONE` у Debezium) — в [`docs/data-analytics/README.ru.md`](./data-analytics/README.ru.md).

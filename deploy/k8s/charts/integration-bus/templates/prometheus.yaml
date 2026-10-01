@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: integration-bus-prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-prometheus
+  template:
+    metadata:
+      labels:
+        app: integration-bus-prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: {{ .Values.prometheus.image }}
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+      volumes:
+        - name: config
+          configMap:
+            name: integration-bus-prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-prometheus
+spec:
+  type: NodePort
+  selector:
+    app: integration-bus-prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: {{ .Values.prometheus.nodePort }}

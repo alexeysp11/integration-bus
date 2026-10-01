@@ -136,4 +136,104 @@ public sealed class TransactionSagaStateMachineTests : IAsyncLifetime
         Producer<WriteLedgerRecord>().Produced.Should().BeEmpty(
             "because a compliance failure must short-circuit the saga before it ever reaches the ledger step");
     }
+
+    [Fact]
+    public async Task HoldAccountBalanceFailure_ShouldTransitionToFailedWithoutAnyCompensation()
+    {
+        Guid transactionId = Guid.NewGuid();
+
+        await _harness.Bus.Publish(new StartTransactionSaga
+        {
+            TransactionId = transactionId,
+            SourceAccountId = Guid.NewGuid(),
+            TargetAccountId = Guid.NewGuid(),
+            Amount = 75m,
+            Currency = Currency.USD
+        });
+
+        ISagaStateMachineTestHarness<TransactionSagaStateMachine, TransactionSagaInstance> sagaHarness =
+            _harness.GetSagaStateMachineHarness<TransactionSagaStateMachine, TransactionSagaInstance>();
+
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingAccountBalanceHold)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new HoldAccountBalanceFailed { TransactionId = transactionId, Reason = "Insufficient funds" });
+
+        (await sagaHarness.Exists(transactionId, x => x.Failed)).Should().NotBeNull(
+            "because a balance hold rejection must move the saga straight to its terminal Failed state");
+        Producer<ReleaseAccountBalance>().Produced.Should().BeEmpty(
+            "because nothing was ever held, so there is nothing to compensate -- this is a terminal failure, not a rollback");
+        Producer<CheckComplianceLimits>().Produced.Should().BeEmpty(
+            "because the saga must never progress past a failed balance hold");
+    }
+
+    [Fact]
+    public async Task WriteLedgerRecordFailure_ShouldCompensateTheAccountBalanceHoldAndTransitionToFailed()
+    {
+        Guid transactionId = Guid.NewGuid();
+
+        await _harness.Bus.Publish(new StartTransactionSaga
+        {
+            TransactionId = transactionId,
+            SourceAccountId = Guid.NewGuid(),
+            TargetAccountId = Guid.NewGuid(),
+            Amount = 200m,
+            Currency = Currency.USD
+        });
+
+        ISagaStateMachineTestHarness<TransactionSagaStateMachine, TransactionSagaInstance> sagaHarness =
+            _harness.GetSagaStateMachineHarness<TransactionSagaStateMachine, TransactionSagaInstance>();
+
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingAccountBalanceHold)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new HoldAccountBalancePassed { TransactionId = transactionId, HeldAt = DateTime.UtcNow });
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingComplianceLimitsCheck)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new CheckComplianceLimitsPassed { TransactionId = transactionId, VerifiedAt = DateTime.UtcNow });
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingLedgerCommit)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new WriteLedgerRecordFailed { TransactionId = transactionId, Reason = "Redis timeout while writing audit trail" });
+
+        (await sagaHarness.Exists(transactionId, x => x.Failed)).Should().NotBeNull(
+            "because a technical failure inside the Core Ledger routing slip must move the saga to its terminal Failed state");
+        Producer<ReleaseAccountBalance>().Produced.Should().ContainSingle(m => m.TransactionId == transactionId,
+            "because the funds held earlier in the saga must be released when the ledger write cannot be completed");
+        Producer<ConfirmAccountBalance>().Produced.Should().BeEmpty(
+            "because the saga must never progress to the accounting commit step after a ledger write failure");
+    }
+
+    [Fact]
+    public async Task ConfirmAccountBalanceFailure_ShouldCompensateTheAccountBalanceHoldAndTransitionToFailed()
+    {
+        Guid transactionId = Guid.NewGuid();
+
+        await _harness.Bus.Publish(new StartTransactionSaga
+        {
+            TransactionId = transactionId,
+            SourceAccountId = Guid.NewGuid(),
+            TargetAccountId = Guid.NewGuid(),
+            Amount = 300m,
+            Currency = Currency.USD
+        });
+
+        ISagaStateMachineTestHarness<TransactionSagaStateMachine, TransactionSagaInstance> sagaHarness =
+            _harness.GetSagaStateMachineHarness<TransactionSagaStateMachine, TransactionSagaInstance>();
+
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingAccountBalanceHold)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new HoldAccountBalancePassed { TransactionId = transactionId, HeldAt = DateTime.UtcNow });
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingComplianceLimitsCheck)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new CheckComplianceLimitsPassed { TransactionId = transactionId, VerifiedAt = DateTime.UtcNow });
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingLedgerCommit)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new WriteLedgerRecordPassed { TransactionId = transactionId, EntryId = 1, CreatedAt = DateTime.UtcNow });
+        (await sagaHarness.Exists(transactionId, x => x.AwaitingAccountingCommit)).Should().NotBeNull();
+
+        await _harness.Bus.Publish(new ConfirmAccountBalanceFailed { TransactionId = transactionId, Reason = "Optimistic concurrency conflict" });
+
+        (await sagaHarness.Exists(transactionId, x => x.Failed)).Should().NotBeNull(
+            "because a failure while finalizing the accounting commit must move the saga to its terminal Failed state");
+        Producer<ReleaseAccountBalance>().Produced.Should().ContainSingle(m => m.TransactionId == transactionId,
+            "because the held funds must be released when the final accounting commit cannot be confirmed");
+    }
 }

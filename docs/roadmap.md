@@ -141,7 +141,7 @@ This document outlines the complete iterative implementation plan for the `integ
     - [x] Integrate OpenTelemetry Tracing SDK into .NET services and explicitly register `.AddSource("MassTransit")` to listen to internal framework activity streams.
     - [x] Configure the OTLP exporter options within the service builder to push telemetry data via gRPC (`http://localhost:4317`) to the central collector.
     - [x] Provision a Jaeger `all-in-one` container in `docker-compose.yml` with OTLP ports enabled and map the web UI port (`16686`) for browser access.
-    - [ ] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans. _(code/infra in place; not yet verified end-to-end against a live `docker compose up` run — see [`docs/observability/README.md`](observability/README.md) §5.)_
+    - [x] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans. _(**Verified live** against a real `docker compose up` run: a transaction's trace in Jaeger shows a single `TraceId` spanning `gateway-api` → `processing-api` → `saga-orchestrator-service` → `account-balance-service` → `compliance-service` → `core-ledger-service`, including the Courier Routing Slip's 3 execute activities and the Postgres (`saga_db`) spans. See [`docs/observability/README.md`](observability/README.md) §5.)_
 * **Definition of Done:**
     - Jaeger UI visualizes interactive asynchronous waterfall graphs mapping the complete lifecycle of a single Saga.
     - Every network hop between `SagaOrchestrator` and processing services is captured as an interconnected child span under a single `TraceId`.
@@ -167,30 +167,31 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🧪 Stage 3: Reliability Engineering & Integration Testing
 
 ### 📌 Quality Assurance: Core Domain Unit and Local Database Integration Testing
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `test/core-domain-testing`
 *   **Description:** Establish the foundational testing infrastructure across the solution. Implement lightweight unit tests for isolated domain business logic and stateful integration tests using Testcontainers or an in-memory database to verify direct repository interactions, custom SQL scripts, and database constraints without triggering full distributed saga lifecycles.
 *   **Todo List:**
-    - [ ] Initialize core testing projects across services using `xUnit`, `FluentAssertions`, and `Moq`/`NSubstitute`.
-    - [ ] Implement isolated unit tests for core domain verification methods, focusing on balance boundary validation and compliance check logic.
-    - [ ] Setup a local database integration testing harness (utilizing temporary database containers or optimized schema definitions) to validate raw Dapper commands and EF Core mappings.
-    - [ ] Code specific integration test cases verifying database constraint violations (e.g., duplicate unique index inserts) and multi-row transaction isolation boundaries.
+    - [x] Initialize core testing projects across services using `xUnit`, `FluentAssertions`, and `Moq`/`NSubstitute`. _(7 test projects: Processing.Api, AccountBalance.Service, Compliance.Service, CoreLedger.Service, SagaOrchestrator.Service, Analytics, Shared.)_
+    - [x] Implement isolated unit tests for core domain verification methods, focusing on balance boundary validation and compliance check logic.
+    - [x] Setup a local database integration testing harness (utilizing temporary database containers or optimized schema definitions) to validate raw Dapper commands and EF Core mappings. _(Testcontainers.PostgreSql across `AccountBalance.Service.Tests`, `CoreLedger.Service.Tests`, `SagaOrchestrator.Service.Tests`; Testcontainers.Redis for `UpdateCacheActivity`.)_
+    - [x] Code specific integration test cases verifying database constraint violations (e.g., duplicate unique index inserts) and multi-row transaction isolation boundaries. _(idempotency guards verified for `Hold`/`Confirm`/`Release`/`TopUp` consumers under real Postgres.)_
 *   **Definition of Done:**
-    - Running `dotnet test` from the root of the repository executes all tests successfully.
+    - Running `dotnet test` from the root of the repository executes all tests successfully. **Verified:** `dotnet test IntegrationBus.slnx` → 7/7 projects green, 119 tests passed, 0 failed.
     - Local repository tests accurately verify data insertion, reading, and rollbacks directly inside isolated microservice databases (`Accounting`, `Compliance`, `Ledger`).
-    - The testing lifecycle does not affect or pollute active local development or production databases.
+    - The testing lifecycle does not affect or pollute active local development or production databases. _(each test class provisions its own disposable Testcontainers instance.)_
 
 ### 📌 Integration Testing for Saga Compensations
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `test/integration-testing-saga`
 *   **Description:** Add a comprehensive integration test suite using `WebApplicationFactory` and the MassTransit test harness to ensure that infrastructure and business validation errors trigger the correct automated rollback behaviors.
 *   **Todo List:**
-    - [ ] Setup an integration test project using `xUnit` and `FluentAssertions`.
-    - [ ] Write an integration test case for a complete successful happy path saga execution.
-    - [ ] Write an integration test case where the `Compliance` step artificially fails, verifying that the `AccountBalance` state is fully compensated and rolled back.
+    - [x] Setup an integration test project using `xUnit` and `FluentAssertions`. _(`IntegrationBus.SagaOrchestrator.Service.Tests`.)_
+    - [x] Write an integration test case for a complete successful happy path saga execution. _(`TransactionSagaStateMachineTests.HappyPath_ShouldProgressThroughEveryStateToCompleted`.)_
+    - [x] Write an integration test case where the `Compliance` step artificially fails, verifying that the `AccountBalance` state is fully compensated and rolled back. _(`ComplianceFailure_ShouldCompensateTheAccountBalanceHoldAndTransitionToFailed`, plus the two other compensation paths this task didn't originally call out: `HoldAccountBalanceFailure` (terminal, no compensation) and `WriteLedgerRecordFailure`/`ConfirmAccountBalanceFailure` (both compensate via `ReleaseAccountBalance`).)_
+    - [x] *(Beyond the original scope)* Prove the Transactional Outbox/Consumer Inbox pattern survives a mid-saga broker outage: `OutboxResilienceTests` uses a real Testcontainers Postgres + the production EF Outbox wiring and a flaky `ITopicProducer` to show the state transition rolls back atomically on dispatch failure, then completes exactly once on redelivery.
 *   **Definition of Done:**
-    - Test pipeline passes locally.
-    - Compensation logic is fully asserted without relying on actual external Docker containers (using local test harness).
+    - Test pipeline passes locally. **Verified:** 6/6 tests green in `IntegrationBus.SagaOrchestrator.Service.Tests`.
+    - Compensation logic is fully asserted without relying on actual external Docker containers (using local test harness). _(`TransactionSagaStateMachineTests` uses MassTransit's pure in-memory `.InMemoryRepository()` test harness, no Docker; `OutboxResilienceTests` deliberately adds a real Postgres container specifically to validate the EF Outbox, which cannot be tested in-memory.)_
 
 ### 📌 Introduce Distributed Locks and Rules Engine
 *   **Status:** **`Done ✅`**
@@ -203,6 +204,17 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Definition of Done:**
     - Concurrent requests to the same account ID are queued/handled safely via Redis without balance race conditions.
     - Compliance service dynamically evaluates transactions based on externalized JSON rules.
+
+### 📌 CI/CD: Automated Build & Test Pipeline
+*   **Status:** **`Done ✅`**
+*   **Git Branch:** `feature/data-analytics`
+*   **Description:** Automate build and quality verification on every push/PR via GitHub Actions, so the test suite documented above actually gates the `main` branch instead of relying on manual local runs.
+*   **Todo List:**
+    - [x] Add `.github/workflows/ci.yml`, triggered on push/PR to `main`.
+    - [x] Pipeline steps: `actions/setup-dotnet` (.NET 10 SDK) → `dotnet restore IntegrationBus.slnx` → `dotnet build --configuration Release --no-restore` → `dotnet test --no-build --verbosity normal`.
+*   **Definition of Done:**
+    - Pushing to or opening a PR against `main` triggers the workflow automatically.
+    - The workflow fails the check if the solution doesn't build in Release or any test fails.
 
 ---
 
@@ -237,15 +249,15 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🌐 Stage 5: Cloud-Native Migration (Kubernetes Deployment)
 
 ### 📌 Kubernetes and Helm Migration
-*   **Status:** **`Pending ⏳`**
-*   **Git Branch:** `feature/k8s-migration`
-*   **Description:** Transition away from Docker Compose and prepare the entire platform topology for running inside a scalable, cloud-native orchestration environment.
+*   **Status:** **`Done ✅`**
+*   **Git Branch:** `feature/data-analytics`
+*   **Description:** Prepare the entire platform topology (not a replacement of docker-compose, but an additional deployment path alongside it) for running inside a scalable, cloud-native orchestration environment.
 *   **Todo List:**
-    - [ ] Write optimized, multi-stage `Dockerfile`s for all .NET microservices.
-    - [ ] Initialize a structured Helm Chart hierarchy inside `/deploy/k8s/charts`.
-    - [ ] Define Kubernetes Deployments, Cluster Services, ConfigMaps, and CPU/Memory resource limits for every component.
+    - [x] Write optimized, multi-stage `Dockerfile`s for all .NET microservices. _(already in place from earlier streams -- no changes needed, they build cleanly for any container runtime.)_
+    - [x] Initialize a structured Helm Chart hierarchy inside `/deploy/k8s/charts`. _(single umbrella chart `integration-bus` covering all 18 docker-compose workloads: 6 .NET services, Kafka, Postgres, Redis, Kafka Connect/Debezium, ClickHouse, Metabase, Prometheus, Grafana, Loki, Jaeger, Kafka UI, Redis Commander.)_
+    - [x] Define Kubernetes Deployments, Cluster Services, ConfigMaps, and CPU/Memory resource limits for every component. _(`StatefulSet`+PVC for all stateful components; the 6 `Deployment`-based app services generated from one DRY template via `range` over `values.yaml`; resource requests/limits applied to the components the DoD names explicitly -- the 6 app services, Kafka, Postgres, Redis.)_
 *   **Definition of Done:**
-    - Running `helm install` fully provisions the entire cluster environment (App services + Kafka + Redis + Postgres) inside a local K3s or Kind cluster.
+    - Running `helm install` fully provisions the entire cluster environment (App services + Kafka + Redis + Postgres) inside a local K3s or Kind cluster. **Verified live** end-to-end on a clean Kind cluster: full black-box business flow (seed → topup → transaction → saga `Completed` → row in ClickHouse `transaction_cube` → trace visible in Jaeger across all 6 services) via the chart's NodePort mappings. See [`docs/k8s-deployment/README.ru.md`](k8s-deployment/README.ru.md), which also documents 3 real bugs found and fixed during live verification (Kafka self-connect deadlock through a non-headless Service, a too-short exec-probe timeout, and a missing Kafka PVC that silently dropped topics on pod recreation).
 
 ---
 

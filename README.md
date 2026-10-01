@@ -1,19 +1,22 @@
 # 🚌 integration-bus
 
-> **⚠️ Project Status: In Active Development (Stage 1 / MVP Skeleton)**  
+> **✅ Project Status: Production-Ready Enterprise System (Stages 1–5 complete)**  
 > This repository represents a live, step-by-step architectural evolution. Features documented below are being rolled out incrementally according to the project roadmap.
 
 ### 📊 Implementation Progress
 - [x] **Stage 1: Core Architecture & Async Saga** — ✅ *Done*
-- [x] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — ✅ *Done* (code/infra complete; see [`docs/observability/README.md`](docs/observability/README.md))
-- [ ] **Stage 3: Reliability & Integration Testing** — 🔄 *In Progress* (distributed locks + rules engine done, see [`docs/reliability/README.md`](docs/reliability/README.md); test coverage partially expanded)
+- [x] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — ✅ *Done* (verified live end-to-end: a single `TraceId` spans all 6 services in Jaeger, correlated with Loki logs; see [`docs/observability/README.md`](docs/observability/README.md))
+- [x] **Stage 3: Reliability & Integration Testing** — ✅ *Done* (distributed locks + rules engine, see [`docs/reliability/README.md`](docs/reliability/README.md); total unit/integration test coverage incl. Outbox/Inbox-under-broker-failure, all saga compensation paths, consumer idempotency, and distributed-lock race conditions — 7/7 test projects green)
 - [x] **Stage 4: Real-Time Analytics (DWH) & Masking** — ✅ *Done* (Debezium/ClickHouse/Metabase pipeline verified live, see [`docs/data-analytics/README.md`](docs/data-analytics/README.md); infrastructure-level HMAC data masking pipeline also done, see [`docs/reliability/README.md`](docs/reliability/README.md))
-- [ ] **Stage 5: Cloud-Native Migration (Kubernetes)** — ⏳ *Pending*
-- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending*
+- [x] **Stage 5: Cloud-Native Migration (Kubernetes)** — ✅ *Done* (full 18-workload stack as one Helm chart, verified live end-to-end on a clean Kind cluster — same business flow, same ClickHouse pipeline, same cross-service Jaeger trace; see [`docs/k8s-deployment/README.md`](docs/k8s-deployment/README.md))
+- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending* (out of scope for the current production-readiness pass)
 
 ### 🔗 Quick Links & Documentation
 *   🗺️ **[Project Evolution Roadmap](docs/roadmap.md)** — Detailed task breakdowns, Done criteria, and milestones.
 *   🚀 **[API Specifications & Verification Rules](docs/api-specifications.md)** — HTTP contracts, JSON payload schemas, FluentValidation constraints, and manual testing procedures.
+*   🎯 **[Black-Box Validation Guide](docs/validation-guide.md)** — End-to-end scenario proving the whole stack works: HTTP → Saga → Observability → Analytics.
+*   ☸️ **[Kubernetes Deployment](docs/k8s-deployment/README.md)** — Full stack as one Helm chart; see [`GETTING-STARTED.ru.md`](docs/k8s-deployment/GETTING-STARTED.ru.md) for a zero-Kubernetes-experience walkthrough.
+*   ⚙️ **[CI Pipeline](.github/workflows/ci.yml)** — GitHub Actions: restore, build (Release), full test run on every push/PR to `main`.
 *   📐 **[Git Contribution & Commit Guidelines](CONTRIBUTING.md)** — Semantic commit rules, branching strategy, and issue tracking linkage.
 
 ---

@@ -416,7 +416,8 @@ services:
   # Real-Time Analytics Pipeline: Kafka Connect running the Debezium Postgres connector plugin,
   # streaming WAL changes from accounting_db/compliance_db/ledger_db as CDC events onto Kafka topics.
   integration-bus-kafka-connect:
-    image: debezium/connect:3.0.0.Final
+    build:
+      context: ./infrastructure/kafka-connect
     container_name: integration-bus-kafka-connect
     environment:
       - BOOTSTRAP_SERVERS=integration-bus-kafka:9094
@@ -443,15 +444,19 @@ services:
     container_name: integration-bus-debezium-registrar
     entrypoint: ["/bin/sh", "/scripts/register-connectors.sh"]
     volumes:
-      - ./infrastructure/debezium:/connectors:ro
+      - ./infrastructure/debezium:/connectors/source:ro
+      - ./infrastructure/clickhouse-sink:/connectors/sink:ro
       - ./infrastructure/debezium/register-connectors.sh:/scripts/register-connectors.sh:ro
     depends_on:
-      - integration-bus-kafka-connect
+      integration-bus-kafka-connect:
+        condition: service_started
+      integration-bus-clickhouse:
+        condition: service_started
     networks:
       - integration-bus-network
 
-  # OLAP analytics store: ingests CDC topics directly via the native Kafka table engine and flattens them
-  # into MergeTree tables through Materialized Views (see infrastructure/clickhouse/init.sql).
+  # OLAP analytics store: ReplacingMergeTree tables fed by the ClickHouse Kafka Connect Sink connector
+  # (see infrastructure/clickhouse/init.sql and infrastructure/clickhouse-sink/*.json).
   integration-bus-clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: integration-bus-clickhouse
@@ -461,6 +466,10 @@ services:
         hard: 262144
     environment:
       - CLICKHOUSE_DB=analytics
+      # Without an explicit password the official image disables network access entirely for the "default" user
+      # (only local/unix-socket connections remain trusted) -- Kafka Connect and Metabase connect over HTTP, so a
+      # password is mandatory here.
+      - CLICKHOUSE_PASSWORD=clickhouse_dev_password
     ports:
       - "8123:8123"
       - "9000:9000"

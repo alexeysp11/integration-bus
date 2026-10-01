@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: integration-bus-loki
+spec:
+  serviceName: integration-bus-loki
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-loki
+  template:
+    metadata:
+      labels:
+        app: integration-bus-loki
+    spec:
+      containers:
+        - name: loki
+          image: {{ .Values.loki.image }}
+          args: ["-config.file=/etc/loki/local-config.yaml"]
+          ports:
+            - containerPort: 3100
+          volumeMounts:
+            - name: data
+              mountPath: /loki
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.loki.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-loki
+spec:
+  selector:
+    app: integration-bus-loki
+  ports:
+    - port: 3100
+      targetPort: 3100

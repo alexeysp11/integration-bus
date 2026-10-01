@@ -2,6 +2,7 @@
 using IntegrationBus.SagaOrchestrator.Service.Sagas;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Contracts.Messages.Events;
+using IntegrationBus.AccountBalance.Contracts.Enums;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 
@@ -10,7 +11,7 @@ namespace IntegrationBus.SagaOrchestrator.Service.Activities;
 /// <summary>
 /// Dispatches the compensating balance release command to Kafka when downstream compliance or ledger commitment failure occurs.
 /// </summary>
-public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountBalance> producer) :
+public sealed class ReleaseAccountBalanceActivity(ILogger<ReleaseAccountBalanceActivity> logger, ITopicProducer<ReleaseAccountBalance> producer) :
     IStateMachineActivity<TransactionSagaInstance, CheckComplianceLimitsFailed>,
     IStateMachineActivity<TransactionSagaInstance, WriteLedgerRecordFailed>,
     IStateMachineActivity<TransactionSagaInstance, ConfirmAccountBalanceFailed>
@@ -26,7 +27,11 @@ public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountB
         BehaviorContext<TransactionSagaInstance, CheckComplianceLimitsFailed> context,
         IBehavior<TransactionSagaInstance, CheckComplianceLimitsFailed> next)
     {
-        await SendReleaseCommandAsync(context.Saga, context.CancellationToken);
+        logger.LogWarning(
+            "Compensation | Compliance rejected Tx: {TransactionId} ({Reason}); releasing the held balance",
+            context.Saga.CorrelationId, context.Message.Reason);
+
+        await SendReleaseCommandAsync(context.Saga, ReleaseAccountBalanceReason.ComplianceViolation, context.CancellationToken);
         await next.Execute(context);
     }
 
@@ -37,13 +42,21 @@ public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountB
         BehaviorContext<TransactionSagaInstance, WriteLedgerRecordFailed> context,
         IBehavior<TransactionSagaInstance, WriteLedgerRecordFailed> next)
     {
-        await SendReleaseCommandAsync(context.Saga, context.CancellationToken);
+        logger.LogWarning(
+            "Compensation | Ledger write failed for Tx: {TransactionId} ({Reason}); releasing the held balance",
+            context.Saga.CorrelationId, context.Message.Reason);
+
+        await SendReleaseCommandAsync(context.Saga, ReleaseAccountBalanceReason.LedgerWriteFailure, context.CancellationToken);
         await next.Execute(context);
     }
 
     public async Task Execute(BehaviorContext<TransactionSagaInstance, ConfirmAccountBalanceFailed> context, IBehavior<TransactionSagaInstance, ConfirmAccountBalanceFailed> next)
     {
-        await SendReleaseCommandAsync(context.Saga, context.CancellationToken);
+        logger.LogWarning(
+            "Compensation | Accounting confirmation failed for Tx: {TransactionId} ({Reason}); releasing the held balance",
+            context.Saga.CorrelationId, context.Message.Reason);
+
+        await SendReleaseCommandAsync(context.Saga, ReleaseAccountBalanceReason.AccountingConfirmationFailure, context.CancellationToken);
         await next.Execute(context);
     }
 
@@ -71,13 +84,14 @@ public sealed class ReleaseAccountBalanceActivity(ITopicProducer<ReleaseAccountB
     /// <summary>
     /// Encapsulates the common internal message production logic to decouple core dispatch from generic wrappers.
     /// </summary>
-    private async Task SendReleaseCommandAsync(TransactionSagaInstance saga, CancellationToken cancellationToken)
+    private async Task SendReleaseCommandAsync(TransactionSagaInstance saga, ReleaseAccountBalanceReason reason, CancellationToken cancellationToken)
     {
         await producer.Produce(new ReleaseAccountBalance
         {
             TransactionId = saga.CorrelationId,
             AccountId = saga.SourceAccountId,
-            Amount = saga.Amount
+            Amount = saga.Amount,
+            Reason = reason
         }, cancellationToken);
     }
 }

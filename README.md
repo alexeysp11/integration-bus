@@ -62,7 +62,7 @@ analytics pipeline, and infrastructure-level data masking.
          (EF Core Transactional Outbox + Consumer Inbox)
                         │
        ┌────────────────┼────────────────────────────────┐
-       ▼ (Step 1)       ▼ (Step 2)                        ▼ (Step 3 — Courier Routing Slip)
+       ▼ (Step 1)       ▼ (Step 2)                       ▼ (Step 3 — Courier Routing Slip)
 [ AccountBalance.Service ]  [ Compliance.Service ]   [ CoreLedger.Service ]
   Redis Distributed Lock      Declarative RulesEngine   WriteAuditTrail → UpdateCache →
   (RedLock.net) +              (JSON-configured limits)  PublishLedgerCommitted

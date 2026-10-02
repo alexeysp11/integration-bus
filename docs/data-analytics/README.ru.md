@@ -6,10 +6,10 @@
 для CDC-захвата изменений из Postgres, и официальный **ClickHouse Kafka Connect Sink Connector** для заливки в
 OLAP.
 
-> **Почему не нативный ClickHouse Kafka Engine.** Первая версия этого пайплайна использовала `ENGINE = Kafka` +
-> Materialized View — рабочий, но архитектурно слабый вариант: он читает и вставляет построчно, что на
-> MergeTree-семье движков приводит к взрывному росту мелких кусков (parts) под нагрузкой, и не даёт контроля над
-> тем, когда Kafka-offset считается "подтверждённым". Разбор проблемы и альтернатив — в [`docs/data-loading.ru.md`](../data-loading.ru.md).
+> **Почему не нативный ClickHouse Kafka Engine.** Альтернативный вариант — `ENGINE = Kafka` + Materialized View —
+> архитектурно слабее: он читает и вставляет построчно, что на MergeTree-семье движков приводит к взрывному росту
+> мелких кусков (parts) под нагрузкой, и не даёт контроля над тем, когда Kafka-offset считается "подтверждённым".
+> Разбор этой и других рассмотренных альтернатив — в [`docs/data-analytics/data-loading.ru.md`](data-loading.ru.md).
 > Официальный sink-коннектор решает оба вопроса: он батчит вставки и коммитит offset в Kafka **только после**
 > подтверждения записи в ClickHouse (at-least-once), а повторно присланные (при ретрае) батчи схлопываются
 > механизмом блочной дедупликации ClickHouse (`non_replicated_deduplication_window`) в связке с
@@ -56,45 +56,46 @@ OLAP.
 
 ---
 
-## 2. ⚠️ Пять неочевидных проблем, найденных и исправленных эмпирически
+## 2. ⚠️ Troubleshooting: совместимость версий и конфигурация
 
-При разворачивании этого пайплайна вживую вскрылись пять независимых проблем — ни одна не была видна из
-документации заранее, все найдены через реальные логи контейнеров и реальный бизнес-флоу (`docs/validation-guide.md`),
-а не только точечные ручные INSERT'ы:
+Текущая конфигурация (`docker-compose.yml`, `infrastructure/clickhouse-sink/*.json`,
+`infrastructure/debezium/register-connectors.sh`) уже учитывает перечисленные ниже требования совместимости. Этот
+раздел — диагностический справочник на случай, если конфигурация будет изменена (например, при обновлении версии
+образа) и один из симптомов ниже проявится снова.
 
-**1. `apache/kafka:latest` → Kafka 4.3.1 несовместим с ClickHouse 24.8.** ClickHouse (бандл `librdkafka`) не мог
-подключиться: ошибка `Local: Required feature not supported by broker`. Kafka 4.x убрал поддержку части старых
-протокольных версий. **Фикс:** брокер зафиксирован на `apache/kafka:3.9.0`.
+**Версия брокера Kafka.** ClickHouse (через бандл `librdkafka`) требует брокер не новее `apache/kafka:3.9.0` —
+более новые версии (4.x) убрали поддержку части протокольных версий, которые `librdkafka` ещё использует. Если
+в логах ClickHouse/Kafka Connect появляется `Local: Required feature not supported by broker` — проверьте тег
+образа `apache/kafka` в `docker-compose.yml`.
 
-**2. Официальный образ ClickHouse без `CLICKHOUSE_PASSWORD` отключает сетевой доступ для `default`.** В логах
-контейнера: `neither CLICKHOUSE_USER nor CLICKHOUSE_PASSWORD is set, disabling network access for user 'default'`.
-Локальный `clickhouse-client` внутри контейнера продолжает работать (это сбивало с толку при ручной проверке), но
-HTTP-запросы от Kafka Connect/Metabase отклоняются с `AUTHENTICATION_FAILED`. **Фикс:** задан
-`CLICKHOUSE_PASSWORD=clickhouse_dev_password`, тот же пароль — в конфигах sink-коннекторов.
+**Пароль ClickHouse обязателен для сетевого доступа.** Официальный образ ClickHouse без `CLICKHOUSE_PASSWORD`
+отключает сетевой доступ для пользователя `default` (запись в логах контейнера: `neither CLICKHOUSE_USER nor
+CLICKHOUSE_PASSWORD is set, disabling network access for user 'default'`) — при этом локальный `clickhouse-client`
+внутри контейнера продолжает работать, что может ввести в заблуждение при ручной проверке. Если Kafka Connect или
+Metabase получают `AUTHENTICATION_FAILED` — убедитесь, что `CLICKHOUSE_PASSWORD` задан в `docker-compose.yml` и
+тот же пароль указан в `password` каждого sink-коннектора.
 
-**3. Плагин `clickhouse-kafka-connect` v1.7.0 по умолчанию использует `client_version=V1` — он падает на
-`ping()` без видимой причины** (`Unable to ping ClickHouse instance`, retries мгновенные, без стектрейса).
-**Фикс:** явно `"client_version": "V2"` в каждом sink-коннекторе — современный клиент, который реально
-поддерживается проектом.
+**`client_version` sink-коннектора должен быть `V2`.** Плагин `clickhouse-kafka-connect` при `client_version=V1`
+(значение по умолчанию) падает на `ping()` без информативной ошибки (`Unable to ping ClickHouse instance`, мгновенные
+retry без стектрейса). Конфигурация каждого sink-коннектора в `infrastructure/clickhouse-sink/*.json` явно
+фиксирует `"client_version": "V2"`.
 
-**4. `TIMESTAMP` vs `TIMESTAMP WITH TIME ZONE` в Postgres меняет формат, в котором Debezium шлёт время.**
-С `time.precision.mode=connect`: обычный `timestamp` (без зоны) сериализуется как **число** (epoch-миллисекунды,
-логический тип Kafka Connect `Timestamp`), а `timestamptz` — как **ISO-8601 строка** (например,
-`"2026-03-14T08:30:00.123456Z"`). Все три продакшен-таблицы (`JournalEntries.TimestampUtc`,
-`ComplianceAudits.CreatedAtUtc`, `LedgerEntries.CreatedAt`) используют `timestamp with time zone` (проверено по
-EF Core миграциям), поэтому везде приходит строка. Чтобы ClickHouse принял такую строку в колонку `DateTime64(6)`,
-sink-коннектору нужна настройка `"clickhouseSettings": "date_time_input_format=best_effort"` — без неё строгий
-парсер ClickHouse падает с `CANNOT_PARSE_INPUT_ASSERTION_FAILED`. Если в какой-то новой таблице случайно
-используют `timestamp` без зоны — дата в ClickHouse окажется в **1970 году** (значение молча трактуется как число),
-без единой ошибки в логах — явный повод для regression-теста при добавлении новых источников.
+**Колонки времени должны быть `TIMESTAMP WITH TIME ZONE`.** Debezium сериализует Postgres `timestamp` (без зоны) как
+число (epoch-миллисекунды), а `timestamptz` — как ISO-8601 строку. Все отслеживаемые колонки (`JournalEntries.TimestampUtc`,
+`ComplianceAudits.CreatedAtUtc`, `LedgerEntries.CreatedAt`) объявлены как `timestamp with time zone`, поэтому
+sink-коннектор настроен на приём строкового формата (`"clickhouseSettings": "date_time_input_format=best_effort"`).
+Если добавляемая в пайплайн таблица использует `timestamp` без зоны — без этой настройки парсер ClickHouse упадёт с
+`CANNOT_PARSE_INPUT_ASSERTION_FAILED`; а если настройка стоит, но колонка всё равно без зоны — дата молча
+окажется в 1970 году (число трактуется как epoch) без единой ошибки в логах. Любая новая таблица в этом пайплайне
+должна использовать `timestamp with time zone` и покрываться regression-тестом по аналогии с
+`tests/IntegrationBus.Analytics.Tests`.
 
-**5. Гонка при старте Kafka Connect REST API.** Регистратор (`register-connectors.sh`) проверял готовность через
-`GET /connectors`, но воркер иногда отвечает на этот запрос ДО того, как полностью присоединится к Connect-кластеру,
-и первый же `POST /connectors` падает с "пустым ответом" (curl exit 52), обрывая `set -e`-скрипт и оставляя
-инфраструктуру без зарегистрированных коннекторов. **Фикс:** добавлена пауза в 5 секунд после первой успешной
-проверки готовности и retry-цикл (до 10 попыток с паузой 3с) вокруг каждой отдельной регистрации — так `docker
-compose up -d` надёжно поднимает инфраструктуру "с одного раза" на чистой машине, как того требует Definition of
-Done в `docs/roadmap.md`.
+**Регистрация коннекторов переживает медленный старт Kafka Connect REST API.** Воркер Kafka Connect может ответить
+`200 OK` на `GET /connectors` до того, как полностью присоединится к Connect-кластеру, из-за чего первый же
+`POST /connectors` может завершиться пустым ответом. `register-connectors.sh` учитывает это: после первой успешной
+проверки готовности выдерживается пауза в 5 секунд, а каждая регистрация коннектора повторяется до 10 раз с
+интервалом 3 секунды — это гарантирует, что `docker compose up -d` поднимает инфраструктуру с одного раза на
+чистой машине.
 
 ---
 
@@ -195,7 +196,7 @@ docker exec integration-bus-clickhouse clickhouse-client --user default --passwo
 1. Собирает **тот же кастомный образ** Kafka Connect, что и `docker-compose.yml`
    (`ImageFromDockerfileBuilder` → `infrastructure/kafka-connect/Dockerfile`), поднимает все контейнеры, создаёт
    таблицу `LedgerEntries` (**обязательно** `TIMESTAMP WITH TIME ZONE`, как в реальной EF Core миграции — см.
-   находку №4 в п. 2), регистрирует тот же Debezium source-коннектор и тот же ClickHouse sink-коннектор
+   «Колонки времени должны быть `TIMESTAMP WITH TIME ZONE`» в п. 2), регистрирует тот же Debezium source-коннектор и тот же ClickHouse sink-коннектор
    (`client_version=V2`, `date_time_input_format=best_effort`), создаёт whitelisted ClickHouse-таблицу
    (`ReplacingMergeTree`), что и в `infrastructure/clickhouse/init.sql`.
 2. Вставляет строку в Postgres.
@@ -203,4 +204,5 @@ docker exec integration-bus-clickhouse clickhouse-client --user default --passwo
 4. Проверяет **полную идентичность** реплицированных полей (`Amount`, `CreatedAt`) исходной вставке.
 
 **Важно:** тест явно фиксирует образ `clickhouse/clickhouse-server:24.8` — версия по умолчанию у
-`Testcontainers.ClickHouse` (`23.6.3`) несовместима с современным брокером Kafka по причине №1 из п. 2.
+`Testcontainers.ClickHouse` (`23.6.3`) несовместима с современным брокером Kafka по той же причине версии
+брокера, что описана в п. 2.

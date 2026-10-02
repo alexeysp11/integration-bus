@@ -1,25 +1,28 @@
-# 🧪 Kafka Consumers Infrastructure Validation Guide
+# 🧪 Kafka Consumers: Manual Infrastructure Validation
 
-This document provides deterministic JSON payloads and instructions required to validate the message-conduction capacity, MassTransit deserialization pipelines, and Serilog telemetry configurations across all isolated backend worker service skeletons.
-
----
-
-## 🚀 Pre-requisites & Verification Flow
-
-1. Ensure the centralized Docker environment (`integration-bus-kafka`, `integration-bus-db`) is fully operational.
-2. Launch the target `.NET 9 Worker` service within your IDE or via the terminal.
-3. Access the **Kafka UI** management dashboard at `http://localhost:8080`.
-4. Navigate to the **Topics** section, locate the target topic, click **Produce Message**, and dispatch the corresponding JSON payload specified below.
-5. Verify the execution boundaries by auditing the worker's console logs for the simulated database transactional outputs.
+This document provides JSON payloads and instructions for manually validating MassTransit's Kafka deserialization
+pipeline, consumer wiring, and telemetry for each worker service — useful when developing or debugging a single
+service in isolation, without driving a full saga through the HTTP API.
 
 ---
 
-## 📦 Service Verification Payloads
+## 🚀 Prerequisites
 
-### 0. Saga Orchestrator Context
-* **Target Topic:** `saga-transaction-start`
-* **Target Worker:** `IntegrationBus.SagaOrchestrator`
-* **Expected Telemetry Output:** MassTransit logs indicating the creation of a new Saga State instance and an outbound dispatch trigger toward the `account-balance-hold` endpoint.
+1. The infrastructure stack is running (`docker compose up -d`): `integration-bus-kafka`, `integration-bus-db`, and
+   `integration-bus-redis` are healthy.
+2. The target `.NET 10` worker service is running (via `docker compose up -d <service>` or from your IDE).
+3. Open **Kafka UI** at `http://localhost:8080`.
+4. Navigate to **Topics**, select the target topic, click **Produce Message**, and paste the JSON payload below.
+5. Observe the worker's console logs (or Loki/Grafana — see [`docs/observability/README.md`](../observability/README.md)) for the expected log line.
+
+---
+
+## 📦 Per-Service Validation Payloads
+
+### 0. Saga Orchestrator
+* **Topic:** `saga-transaction-start`
+* **Worker:** `IntegrationBus.SagaOrchestrator.Service`
+* **Expected Log:** `Saga step 1/4 | Dispatching HoldAccountBalance for Tx: {TransactionId}, ...`
 
 ```json
 {
@@ -31,23 +34,25 @@ This document provides deterministic JSON payloads and instructions required to 
 }
 ```
 
-### 1. Account Balance Service Context
-* **Target Topic:** `account-balance-hold`
-* **Target Worker:** `IntegrationBus.AccountBalance.Service`
-* **Expected Telemetry Output:** `[INFO] [HoldAccountBalanceConsumer] Database: balance | Simulating SQL write: INSERT INTO AccountHolds...`
+### 1. Account Balance Service
+* **Topic:** `account-balance-hold`
+* **Worker:** `IntegrationBus.AccountBalance.Service`
+* **Expected Log:** `Processing event-sourced balance hold for Tx: {TransactionId}, Source Account: {SourceAccountId}, Target Account: {TargetAccountId}`
 
 ```json
 {
   "transactionId": "b1111111-2222-3333-4444-555555555555",
-  "accountId": "a2222222-3333-4444-5555-999999999999",
-  "amount": 1500.00
+  "accountFromId": "a2222222-3333-4444-5555-999999999999",
+  "accountToId": "c3333333-4444-5555-7777-777777777777",
+  "amount": 1500.00,
+  "currency": 1
 }
 ```
 
-### 2. Compliance Service Context
-* **Target Topic:** `compliance-limits-check`
-* **Target Worker:** `IntegrationBus.Compliance.Service`
-* **Expected Telemetry Output:** `[INFO] [CheckComplianceLimitsConsumer] Database: compliance | Executing SQL: INSERT INTO ComplianceAudit...`
+### 2. Compliance Service
+* **Topic:** `compliance-limits-check`
+* **Worker:** `IntegrationBus.Compliance.Service`
+* **Expected Log:** `Successfully persisted and dispatched compliance passing event for TransactionId: {TransactionId}` (or a `...Failed` event if the message violates one of the declarative rules in `Rules/compliance-rules.json` — see [`docs/reliability/README.md`](../reliability/README.md) §4).
 
 ```json
 {
@@ -59,10 +64,10 @@ This document provides deterministic JSON payloads and instructions required to 
 }
 ```
 
-### 3. Core Ledger Service Context
-* **Target Topic:** `core-ledger-record-write`
-* **Target Worker:** `IntegrationBus.CoreLedger.Service`
-* **Expected Telemetry Output:** `[INFO] [WriteLedgerRecordConsumer] Database: ledger | Executing SQL: INSERT INTO LedgerEntries...`
+### 3. Core Ledger Service
+* **Topic:** `core-ledger-record-write`
+* **Worker:** `IntegrationBus.CoreLedger.Service`
+* **Expected Log:** `Ingesting external ledger command for TransactionId: {TransactionId}. Building local technical routing slip context.`
 
 ```json
 {
@@ -76,22 +81,29 @@ This document provides deterministic JSON payloads and instructions required to 
 
 ---
 
-## Distributed Transaction Flow & Multi-Level Compensation Lifecycle
+## Distributed Transaction Flow & Compensation Lifecycle
 
-The system utilizes a two-level orchestration engine: **Global Stateful Orchestration** (via MassTransit Saga State Machine and Apache Kafka) and **Local Stateless Orchestration** (via MassTransit Courier Routing Slips over InMemory bus inside the Ledger domain).
+The system uses two levels of orchestration: a **global stateful Saga** (MassTransit Saga State Machine over
+Kafka) and a **local stateless Courier Routing Slip** (inside `CoreLedger.Service`, over an in-memory bus) for the
+ledger-commit step.
 
 ```text
-[Step 1: Ingestion API] ──> [Step 2: Account Balance] ──> [Step 3: Compliance] ──> [Step 4: Core Ledger (Routing Slip)]
-                                  │                            │                        │
-Compensations:                    └── None (Terminal Failure)  └── Global Release       └── 1. Local Automated Compensation (Courier)
-                                                                                            2. Global Balance Release Trigger
+[Hold] ──> [Compliance Check] ──> [Ledger Commit (Routing Slip)] ──> [Confirm]
+   │               │                        │                          │
+   └── terminal     └── release hold         └── local technical        └── release hold
+       (no               (global                  rollback across          (global
+       compensation)     compensation)             WriteAuditTrail/         compensation)
+                                                    UpdateCache/
+                                                    PublishLedgerCommitted
 ```
 
 ---
 
-## 🏁 Definition of Done Criteria Check
+## 🏁 Expected Healthy State
 
-The infrastructure footprint validation is considered absolute if:
-* The MassTransit bus initializes successfully without shying away with a `KafkaConnectionException`.
-* The target consumer internal state successfully triggers upon message ingestion.
-* No `SerializationException` errors are registered inside the consumer execution pipelines.
+* The MassTransit bus for each service starts without throwing a `KafkaConnectionException`.
+* Each consumer's handler executes and produces the corresponding `...Passed`/`...Failed` outcome event.
+* No `SerializationException` appears in any consumer's execution pipeline.
+
+For a full end-to-end run driven through the real HTTP API rather than manual topic production, see
+[`validation-guide.md`](validation-guide.md).

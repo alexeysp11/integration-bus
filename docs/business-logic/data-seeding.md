@@ -1,82 +1,54 @@
-# Automated Test Data Seeding Strategy
+# Bulk Test Account Seeding
 
-To execute high-throughput performance testing via `k6`, the system requires a baseline pool of 100,000 to 500,000 unique, valid accounts within the `Accounting.Service` database. This document defines the secure, environment-gated API seeding mechanism.
-
----
-
-## 1. Architectural and Security Constraints
-
-* **Strict Environment Isolation:** The seeding endpoint must never be registered or reachable in the Production environment. It is compiled/routed exclusively under `Development` or `Testing` profiles.
-* **In-Memory Routing Protection:** Rather than relying on soft runtime authorization checks, the route is completely omitted from the ASP.NET Core routing table on production builds, returning a hard `404 Not Found`.
-* **High-Throughput Ingestion:** To prevent HTTP connection timeouts when generating 500k rows, the endpoint bypasses EF Core's Change Tracker and leverages high-speed bulk utilities (e.g., `NpgsqlCopyHelper` or Dapper batch writes).
+The `AccountBalance.Service` database uses an event-sourced balance model, so a freshly seeded account always
+starts at a balance of `0` — there is no `initialBalance` field. This endpoint exists purely to populate the
+`Accounts` table with a large pool of valid account identifiers for manual testing and load-testing scenarios; use
+the top-up endpoint (see [`api-specifications.md`](api-specifications.md)) afterward to fund any account you plan
+to debit from.
 
 ---
 
-## 2. API Contract Specification
+## 1. Environment Gating
 
-### Seed Test Accounts
-* **Endpoint:** `POST /api/v1/accounts/seed`
+* The route is registered with a `[DenyProductionEnvironment]` filter and returns `HTTP 404 Not Found` whenever
+  `ASPNETCORE_ENVIRONMENT=Production`, regardless of request content.
+* Available under all other environment profiles (`Development`, `Testing`, etc.).
+
+---
+
+## 2. API Contract
+
+* **Route:** `POST /api/v1/accounts/seed`
 * **Content-Type:** `application/json`
-* **Availability:** `Development` / `Testing` environments only.
 
 #### Request Payload
 ```json
 {
   "count": 100000,
-  "initialBalance": 10000.00,
-  "currency": "USD"
+  "currency": 1
 }
 ```
+* `count`: number of accounts to generate (default `100000` if omitted).
+* `currency`: a defined, non-`None` value of the `Currency` enum (see [`api-specifications.md`](api-specifications.md)).
 
-#### Success Response (`202 Accepted`)
-```json
-{
-  "message": "Bulk seeding operation initiated successfully.",
-  "recordsRequested": 100000,
-  "status": "Completed"
-}
-```
+#### Success Response
+`HTTP 202 Accepted`, empty body. The accounts are generated asynchronously; poll the database directly to confirm
+completion (see [`validation-guide.md`](validation-guide.md) §2 for the exact `psql` query).
+
+#### Error Response
+`HTTP 400 Bad Request` if `count` is zero or negative.
 
 ---
 
-## 3. Reference Implementation Blueprint
+## 3. Processing Model
 
-The following snippet demonstrates how the endpoint is securely encapsulated and registered based on active environment variables inside `Program.cs`:
+The request is published as a `SeedAccountDatabaseBulkData` command onto Kafka and consumed asynchronously by
+`AccountBalance.Service`'s `SeedAccountDatabaseBulkDataConsumer`:
 
-```csharp
-public static class TestingEndpointsExtensions
-{
-    public static WebApplication MapTestingEndpoints(this WebApplication app)
-    {
-        var isTesting = app.Environment.IsDevelopment() || 
-                        string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Testing", StringComparison.OrdinalIgnoreCase);
-
-        if (!isTesting)
-        {
-            // Do not register endpoints under production profiles
-            return app;
-        }
-
-        app.MapPost("/api/v1/accounts/seed", async (
-            [FromBody] SeedAccountsRequest request,
-            [FromServices] IBulkSeedingService seedingService,
-            CancellationToken ct) =>
-        {
-            if (request.Count <= 0 || request.Count > 500000)
-            {
-                return Results.BadRequest(new { Error = "Count must be between 1 and 500,000." });
-            }
-
-            await seedingService.ExecuteBulkSeedAsync(request.Count, request.InitialBalance, request.Currency, ct);
-            
-            return Results.Accepted(value: new {
-                Message = "Bulk seeding operation completed successfully.",
-                RecordsRequested = request.Count,
-                Status = "Completed"
-            });
-        });
-
-        return app;
-    }
-}
-```
+* Generated in batches of 10,000 via `DbContext.AddRangeAsync` + `SaveChangesAsync`, with change tracking disabled
+  (`AutoDetectChangesEnabled = false`, `QueryTrackingBehavior.NoTracking`) to keep memory flat regardless of the
+  requested count.
+* Each account is assigned a random historical `CreatedAt` timestamp within the last 365 days, so seeded data looks
+  realistic in time-series dashboards.
+* On completion, a `SeedAccountDatabaseBulkDataPassed` event (carrying the seeded quantity) is published back onto
+  Kafka.

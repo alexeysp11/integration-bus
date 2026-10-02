@@ -26,7 +26,10 @@ This document establishes strict constraints for AI models when creating, updati
 * **Rule:** Maintain clean boundaries between localized versions of documentation.
   * English master files must use a plain `.md` extension (e.g., `README.md`).
   * Russian localized files must strictly use the `.ru.md` suffix before the extension (e.g., `README.ru.md`).
-  * Bi-directional language links must be placed at the top of paired files for quick switching (e.g., `[English](README.md) | [Русский](README.ru.md)`).
+  * Bi-directional language links must be placed at the top of paired files for quick switching, e.g.:
+    ```text
+    [English](README.md) | [Русский](README.ru.md)
+    ```
 * **Cross-Language Constraint & Exceptions:**
   * **English Files:** An English file (`.md`) must **never** link to a Russian (`.ru.md`) version of any document. If the target document only exists in Russian, you must first create its English version, and then link to it.
   * **Russian Files:** A Russian file (`.ru.md`) must link to the Russian version of the target document. 
@@ -43,7 +46,7 @@ This document establishes strict constraints for AI models when creating, updati
 ### 8. Strict Intellectual Honesty (No Empty Promises or Pretentious Claims)
 *   **Rule:** Describe the current actual capabilities of the project without marketing exaggeration. Do not make claims about states or architectures that are not yet fully implemented.
 *   **Constraint:** If the project targets a specific standard but has not fully achieved it yet, state this transparently or omit the claim entirely. 
-    *   *Correct approach:* "Our goal is to build an Advanced Cloud-Native platform. We are currently executing the [Roadmap](roadmap.md) to reach this state." (Or do not mention "Advanced Cloud-Native" at all).
+    *   *Correct approach:* "Our goal is to build an Advanced Cloud-Native platform. We are currently executing the Roadmap to reach this state." (Or do not mention "Advanced Cloud-Native" at all).
     *   *Production-Ready Boundary:* You may emphasize that we strictly strive for **production-ready quality** in both code and documentation, but you must **never** state that the product itself is currently a finished, production-ready enterprise solution.
 
 ### 9. High-Quality Presentation (Overcoming Critical Skepticism)

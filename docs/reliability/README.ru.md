@@ -10,14 +10,14 @@
 
 ## 1. Проблема, которую решают распределённые блокировки
 
-До этого изменения `HoldAccountBalanceConsumer` читал текущий доступный баланс счёта (через
-`IAccountStateReconstructor.ReconstructAvailableBalanceAsync`) и затем — **в той же самой** транзакции БД — вставлял
+`HoldAccountBalanceConsumer` читает текущий доступный баланс счёта (через
+`IAccountStateReconstructor.ReconstructAvailableBalanceAsync`) и затем — **в той же самой** транзакции БД — вставляет
 hold-запись в журнал. Так как Npgsql по умолчанию использует уровень изоляции `Read Committed`, а сама sequence-based
 модель event sourcing не блокирует чтение баланса чем-то вроде `SELECT ... FOR UPDATE`, при **двух репликах** сервиса
 `account-balance-service`, обрабатывающих `HoldAccountBalance` для **одного и того же** счёта одновременно (Kafka не
 гарантирует, что оба сообщения попадут на одну и ту же партицию/реплику, так как партиционирование по `AccountId`
-пока не реализовано — см. [`docs/roadmap.md`](../roadmap.md), Stage 6), возможен классический TOCTOU (time-of-check-to-time-of-use)
-race:
+пока не реализовано — см. [`docs/roadmap.md`](../roadmap.md), Stage 6), без дополнительной синхронизации возможен
+классический TOCTOU (time-of-check-to-time-of-use) race:
 
 1. Реплика A читает баланс счёта: 100.
 2. Реплика B читает баланс того же счёта: 100 (до того как A успела закоммитить).
@@ -94,25 +94,18 @@ Redis, чего достаточно, чтобы устранить продем
 
 ---
 
-## 3. Идемпотентность (закрыта попутно, так как напрямую связана с защитой от гонок)
+## 3. Идемпотентность под повторной доставкой Kafka
 
-При аудите обнаружилось, что `HoldAccountBalanceConsumer`, `ConfirmAccountBalanceConsumer`,
-`ReleaseAccountBalanceConsumer` и `TopUpAccountBalanceConsumer` не проверяли, не был ли `TransactionId` уже обработан
-ранее — при повторной доставке сообщения Kafka (at-least-once delivery) каждый из них создавал **вторую**
-журнальную запись, задваивая списание/зачисление. Во все четыре консьюмера добавлена проверка "запись с таким
-`TransactionId` и таким `EntryType` уже существует" **перед** вставкой; при обнаружении дубликата консьюмер
-коммитит пустую транзакцию и повторно публикует событие `...Passed` (идемпотентный replay), не изменяя баланс
-повторно.
+`HoldAccountBalanceConsumer`, `ConfirmAccountBalanceConsumer`, `ReleaseAccountBalanceConsumer` и
+`TopUpAccountBalanceConsumer` защищены от повторной доставки сообщения Kafka (at-least-once delivery): перед
+вставкой новой журнальной записи каждый консьюмер проверяет, не существует ли уже запись с таким `TransactionId` и
+таким `EntryType`. При обнаружении дубликата консьюмер коммитит пустую транзакцию и повторно публикует событие
+`...Passed` (идемпотентный replay), не изменяя баланс повторно.
 
 ---
 
 ## 4. Compliance Rules Engine: декларативные JSON-правила
 
-### 4.1 Было
-`CheckComplianceLimitsConsumer` безусловно писал в БД аудит-запись со статусом `Passed` и публиковал
-`CheckComplianceLimitsPassed` — никакой реальной проверки лимитов не существовало.
-
-### 4.2 Стало
 Пакет `RulesEngine` (Microsoft, NuGet ID `RulesEngine`, v6.0.1) загружает workflow из
 `src/Services/IntegrationBus.Compliance.Service/Rules/compliance-rules.json` один раз при старте сервиса
 (`ComplianceRulesEvaluator`, зарегистрирован как singleton), и на каждый `CheckComplianceLimits` выполняет
@@ -120,7 +113,7 @@ Redis, чего достаточно, чтобы устранить продем
 причиной отказа (`ComplianceEvaluationResult.FailureReason`), которая записывается в `ComplianceAudits.FailureReason`
 и уходит в `CheckComplianceLimitsFailed.Reason`.
 
-### 4.3 Структура JSON-файла правил
+### 4.1 Структура JSON-файла правил
 ```json
 [
   {
@@ -148,7 +141,7 @@ Redis, чего достаточно, чтобы устранить продем
 Сейчас настроено 4 правила: положительная сумма, максимум одной транзакции (1,000,000), различие счетов
 отправителя/получателя, допустимый диапазон кода валюты (`Currency` enum, 1–11).
 
-### 4.4 Как добавить новое правило
+### 4.2 Как добавить новое правило
 1. Добавить объект в массив `Rules` в `compliance-rules.json` (файл копируется в выходную директорию сборки —
    `CopyToOutputDirectory: PreserveNewest`, путь настраивается через `ComplianceRules:RulesFilePath` в
    `appsettings.json`, по умолчанию `Rules/compliance-rules.json`).
@@ -158,7 +151,7 @@ Redis, чего достаточно, чтобы устранить продем
    файла во время работы нет — после правки `compliance-rules.json` сервис нужно перезапустить
    (`docker compose restart integration-bus-compliance-service`).
 
-### 4.5 Тесты
+### 4.3 Тесты
 `tests/IntegrationBus.Compliance.Service.Tests/Rules/ComplianceRulesEvaluatorTests.cs` подключает **тот самый**
 production-файл правил (через MSBuild `<None Include="..." Link="...">`, а не копию), поэтому регрессия в самом
 JSON-файле будет обнаружена тестами, а не только в рантайме.

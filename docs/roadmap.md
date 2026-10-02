@@ -285,3 +285,27 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Definition of Done:**
     - The system achieves Exactly-Once processing guarantees.
     - Zero financial records are dropped or corrupted, and MassTransit successfully tracks or compensates interrupted routing slips.
+
+---
+
+## 🛡️ Stage 7: API Gateway Hardening & Identity
+
+### 📌 NGINX Ingress & Rate Limiting
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `feature/nginx-rate-limiting`
+*   **Description:** Place an `NGINX` layer in front of `Gateway.Api` to terminate TLS, sanitize headers, and enforce per-client rate limiting before traffic reaches the YARP proxy layer.
+*   **Todo List:**
+    - [ ] Add an `NGINX` reverse proxy container (or Ingress Controller, for the Kubernetes deployment path) in front of `Gateway.Api`.
+    - [ ] Configure TLS termination and per-client/per-route rate limiting rules.
+*   **Definition of Done:**
+    - Requests exceeding the configured rate limit receive `HTTP 429 Too Many Requests` before reaching `Gateway.Api`.
+
+### 📌 Keycloak OIDC Authentication & gRPC Token Validation
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `feature/keycloak-oidc-auth`
+*   **Description:** Introduce a `Keycloak` identity provider (OAuth2/OIDC) and validate inbound bearer tokens at the gateway layer via a dedicated gRPC validation service, so downstream services never need to implement authentication themselves.
+*   **Todo List:**
+    - [ ] Provision a `Keycloak` instance and define a realm/client for the platform.
+    - [ ] Add a gRPC token-validation service and call it from `Gateway.Api` before proxying any request.
+*   **Definition of Done:**
+    - Requests without a valid Keycloak-issued token are rejected at the gateway with `HTTP 401 Unauthorized`, before reaching `Processing.Api`.

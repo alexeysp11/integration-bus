@@ -105,12 +105,25 @@ curl http://localhost:6004/health   # Core Ledger
 
 ## 5. Сквозная проверка: лог → трейс → метрика
 
-1. Отправьте тестовую транзакцию (см. `docs/validation-guide.md`, когда он появится, либо `docs/api-specifications.md` для готового `cURL`).
+1. Отправьте тестовую транзакцию (см. [`docs/business-logic/validation-guide.ru.md`](../business-logic/validation-guide.ru.md) либо [`docs/business-logic/api-specifications.md`](../business-logic/api-specifications.md) для готового `cURL`).
 2. Скопируйте `transactionId` из ответа.
 3. В Grafana → **Explore** → выберите datasource **Loki** → запрос `{service_name="integration-bus-saga-orchestrator-service"} |= "<transactionId>"`.
 4. У найденной строки лога найдите `TraceId` (добавлен `Serilog.Enrichers.Span`) и откройте его в Jaeger (`http://localhost:16686/trace/<TraceId>`), либо через derived field, настроенный в п. 3.3.
 5. В Jaeger должна отобразиться цепочка спанов через все сервисы, участвовавшие в саге (`Processing.Api → SagaOrchestrator → AccountBalance → Compliance → CoreLedger`).
 
-**Проверено вживую** на чистом `docker compose up -d --build`: один `_TraceId` (например, `081657cc7861fefad19eca940202c916`) совпадает в логах `integration-bus-saga-orchestrator-service` и `integration-bus-account-balance-service` в Loki, а соответствующий трейс в Jaeger (`GET /api/traces/<TraceId>`) содержит полную цепочку из 6 сервисов (`gateway-api → processing-api → saga-orchestrator-service → account-balance-service → compliance-service → core-ledger-service`), включая Kafka `send`/`receive`/`process`-спаны, 3 execute-активности Courier Routing Slip (`WriteAuditTrail`, `UpdateCache`, `PublishLedgerCommitted`) и `saga_db` (Postgres) спаны.
+Результат: единый `TraceId` совпадает в логах всех задействованных сервисов в Loki, а соответствующий трейс в
+Jaeger содержит полную цепочку из 6 сервисов (`gateway-api → processing-api → saga-orchestrator-service →
+account-balance-service → compliance-service → core-ledger-service`), включая Kafka `send`/`receive`/`process`-спаны,
+3 execute-активности Courier Routing Slip (`WriteAuditTrail`, `UpdateCache`, `PublishLedgerCommitted`) и `saga_db`
+(Postgres) спаны.
 
-> **Найденный и исправленный пробел:** до этой проверки `SagaOrchestrator.Service` вообще не писал бизнес-логов — ни одна из 5 Activity саги (`HoldAccountBalanceActivity`, `CheckComplianceLimitsActivity`, `ProcessLedgerWriteActivity`, `ConfirmAccountBalanceActivity`, `ReleaseAccountBalanceActivity`) не использовала `ILogger`. Сага при этом исполнялась технически корректно, но центральный оркестратор был полностью "слеп" для Loki/Grafana. Добавлено информационное логирование на каждый из 4 шагов саги и предупреждающее — на каждую компенсацию и на фолт `ProcessLedgerWriteActivity`.
+`SagaOrchestrator.Service` логирует каждый из 4 шагов саги на уровне `Information` (диспатч `HoldAccountBalance`,
+`CheckComplianceLimits`, `WriteLedgerRecord`, `ConfirmAccountBalance`) и на уровне `Warning` — каждую компенсацию и
+технический фолт `ProcessLedgerWriteActivity`, так что центральный оркестратор полностью виден в Loki/Grafana
+наравне с остальными сервисами.
+
+### Troubleshooting: сага выполняется, но не видна в Loki
+
+Если новая Activity саги молчит в логах, несмотря на корректное выполнение — проверьте, что в её конструктор
+инжектирован `ILogger<T>` и внутри `Execute`/`Faulted` есть явный вызов `logger.LogInformation`/`LogWarning`:
+MassTransit не логирует сами по себе шаги State Machine, это ответственность конкретной `IStateMachineActivity`.

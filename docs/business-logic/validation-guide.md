@@ -1,25 +1,27 @@
-# 🎯 Validation Guide: сквозной сценарий проверки «Black Box»
+# 🎯 Validation Guide: End-to-End "Black Box" Verification Scenario
 
-Пошаговый сценарий для инженера, который впервые запускает систему и должен убедиться, что весь стек — от HTTP-запроса
-до аналитической витрины в ClickHouse — работает целиком. Все команды — `bash`/`cURL`, без предварительных знаний о
-внутреннем устройстве кода.
+[English](validation-guide.md) | [Русский](validation-guide.ru.md)
+
+A step-by-step scenario for an engineer running the system for the first time, to confirm that the whole stack —
+from an HTTP request to the analytics dashboard in ClickHouse — works end to end. All commands are `bash`/`cURL`,
+with no prior knowledge of the internal code required.
 
 ---
 
-## Шаг 1. Запуск и проверка здоровья системы
+## Step 1. Start the System and Check Its Health
 
 ```bash
 cd integration-bus
 docker compose up -d
 ```
 
-Дождитесь, пока одноразовые init-контейнеры завершатся (`Exited (0)`), остальные — в состоянии `Up`:
+Wait for the one-shot init containers to finish (`Exited (0)`); the rest should be in the `Up` state:
 
 ```bash
 docker compose ps
 ```
 
-Проверьте health-эндпоинты всех шести .NET-сервисов (каждый должен вернуть `200 OK` / `Healthy`):
+Check the health endpoints of all six .NET services (each should return `200 OK` / `Healthy`):
 
 ```bash
 curl -s -o /dev/null -w "Gateway: %{http_code}\n"            http://localhost:5038/health
@@ -30,9 +32,9 @@ curl -s -o /dev/null -w "Compliance: %{http_code}\n"         http://localhost:60
 curl -s -o /dev/null -w "CoreLedger: %{http_code}\n"         http://localhost:6004/health
 ```
 
-Если какой-то сервис ещё `Unhealthy` — подождите 10–20 секунд (миграции БД и провижининг Kafka-топиков на первом
-старте) и повторите. Статус всех 6 Kafka Connect коннекторов (3 Debezium source + 3 ClickHouse sink) должен быть
-`RUNNING`:
+If any service is still `Unhealthy` — wait 10–20 seconds (database migrations and Kafka topic provisioning run on
+first startup) and retry. The status of all 6 Kafka Connect connectors (3 Debezium source + 3 ClickHouse sink)
+should be `RUNNING`:
 
 ```bash
 curl -s "http://localhost:8083/connectors?expand=status"
@@ -40,10 +42,10 @@ curl -s "http://localhost:8083/connectors?expand=status"
 
 ---
 
-## Шаг 2. Подготовка тестовых счетов
+## Step 2. Prepare Test Accounts
 
-В системе нет отдельного публичного эндпоинта «создать один счёт» — счета создаются только через bulk-seed. Создадим
-5 тестовых счетов в USD и возьмём два реальных `Id` из базы:
+The system has no separate public "create one account" endpoint — accounts are only created via bulk seeding.
+Let's create 5 test accounts in USD and grab two real `Id`s from the database:
 
 ```bash
 curl -s -X POST http://localhost:5038/api/v1/accounts/seed \
@@ -57,8 +59,8 @@ docker exec integration-bus-db psql -U postgres -d accounting_db -t -c \
   "SELECT \"Id\" FROM \"Accounts\" ORDER BY \"CreatedAt\" DESC LIMIT 2;"
 ```
 
-Сохраните два GUID из вывода как `SOURCE_ID` и `TARGET_ID`. Пополните баланс счёта-источника, чтобы хватило на
-перевод (у только что засеянных счетов баланс — 0):
+Save two GUIDs from the output as `SOURCE_ID` and `TARGET_ID`. Top up the source account's balance so there is
+enough to transfer (freshly seeded accounts have a balance of 0):
 
 ```bash
 curl -s -X POST "http://localhost:5038/api/v1/accounts/$SOURCE_ID/topup" \
@@ -71,9 +73,9 @@ sleep 2
 
 ---
 
-## Шаг 3. Отправка тестовой транзакции
+## Step 3. Send a Test Transaction
 
-**Эндпоинт:** `POST http://localhost:5038/api/v1/ledger/transaction`
+**Endpoint:** `POST http://localhost:5038/api/v1/ledger/transaction`
 **Content-Type:** `application/json`
 
 ```bash
@@ -87,11 +89,11 @@ curl -s -X POST http://localhost:5038/api/v1/ledger/transaction \
   }"
 ```
 
-### Ожидаемый результат
+### Expected Result
 
-**Статус-код:** `202 Accepted`
+**Status code:** `202 Accepted`
 
-**Тело ответа:**
+**Response body:**
 ```json
 {
   "transactionId": "b1111111-2222-3333-4444-999999999977",
@@ -100,11 +102,10 @@ curl -s -X POST http://localhost:5038/api/v1/ledger/transaction \
 }
 ```
 
-Сохраните `transactionId` из ответа — он понадобится на следующих шагах.
+Save the `transactionId` from the response — you will need it in the following steps.
 
-> **Нет отдельного GET-эндпоинта опроса статуса саги** (несмотря на то, что это упоминалось в ранних версиях
-> `docs/roadmap.md`, в коде такого маршрута нет). Чтобы увидеть финальное состояние распределённой транзакции,
-> черным ящиком запросите таблицу состояния саги напрямую:
+> **There is no separate GET endpoint for polling saga status.** To see the final state of the distributed
+> transaction as a black box, query the saga state table directly:
 
 ```bash
 sleep 3
@@ -112,40 +113,43 @@ docker exec integration-bus-db psql -U postgres -d saga_db -c \
   "SELECT \"CorrelationId\", \"CurrentState\", \"ErrorMessage\" FROM \"TransactionState\" WHERE \"CorrelationId\" = '<transactionId>';"
 ```
 
-Ожидается `CurrentState = Completed` и `ErrorMessage = NULL` — сага прошла все 4 шага (Hold → Compliance → Ledger →
-Confirm) успешно.
+`CurrentState = Completed` and `ErrorMessage = NULL` are expected — the saga completed all 4 steps
+(Hold → Compliance → Ledger → Confirm) successfully.
 
 ---
 
-## Шаг 4. Проверка контура Observability
+## Step 4. Verify the Observability Stack
 
-1. **Loki (логи).** Откройте Grafana → `http://localhost:3000` (логин/пароль `admin`/`admin`) → **Explore** →
-   выберите datasource **Loki** (настройка — `docs/observability/README.md` §3.2) → запрос:
+1. **Loki (logs).** Open Grafana → `http://localhost:3000` (login/password `admin`/`admin`) → **Explore** →
+   select the **Loki** datasource (configuration — [`docs/observability/README.md`](../observability/README.md)
+   §3.2) → query:
    ```logql
    {service_name="integration-bus-saga-orchestrator-service"} |= "<transactionId>"
    ```
-   В найденных строках лога будет поле `TraceId` (добавлено `Serilog.Enrichers.Span`).
+   The matching log lines will contain a `TraceId` field (added by `Serilog.Enrichers.Span`).
 
-2. **Jaeger (трейсинг).** Скопируйте `TraceId` из лога и откройте:
+2. **Jaeger (tracing).** Copy the `TraceId` from the log and open:
    ```text
    http://localhost:16686/trace/<TraceId>
    ```
-   Должна отобразиться waterfall-диаграмма со спанами минимум от `integration-bus-processing-api` и
-   `integration-bus-saga-orchestrator-service` — сквозной путь сообщения через Kafka-топики саги.
+   A waterfall diagram should appear with spans from at least `integration-bus-processing-api` and
+   `integration-bus-saga-orchestrator-service` — the message's end-to-end path through the saga's Kafka topics.
 
-3. **Prometheus (метрики).** Откройте `http://localhost:9090/graph` и выполните запрос:
+3. **Prometheus (metrics).** Open `http://localhost:9090/graph` and run the query:
    ```promql
    rate(http_server_request_duration_seconds_count{job="processing-api"}[5m])
    ```
-   График должен показать ненулевой всплеск в момент отправки запроса из Шага 3 (сам набор экспортируемых метрик
-   — см. `docs/observability/README.md` §4.2, автодополнение Prometheus подскажет точные имена).
+   The graph should show a non-zero spike at the moment the request was sent in Step 3 (the exact set of
+   exported metrics is documented in
+   [`docs/observability/README.md`](../observability/README.md) §4.2; Prometheus's autocomplete will suggest the
+   exact names).
 
 ---
 
-## Шаг 5. Проверка аналитического контура (ClickHouse)
+## Step 5. Verify the Analytics Pipeline (ClickHouse)
 
-Через несколько секунд после завершения саги (Debezium → Kafka → ClickHouse Sink Connector, см.
-`docs/data-analytics/README.ru.md`) измененные данные должны появиться в ClickHouse:
+A few seconds after the saga completes (Debezium → Kafka → ClickHouse Sink Connector, see
+[`docs/data-analytics/README.md`](../data-analytics/README.md)), the changed data should appear in ClickHouse:
 
 ```bash
 docker exec integration-bus-clickhouse clickhouse-client \
@@ -153,20 +157,21 @@ docker exec integration-bus-clickhouse clickhouse-client \
   "SELECT * FROM analytics.transaction_cube WHERE TransactionId = '<transactionId>' FORMAT Vertical"
 ```
 
-Ожидаемый результат — одна строка с:
-- `JournalEntryType = 1` (Hold) и `JournalAmountDelta = -100` (списание 100.00 со счёта-источника);
+The expected result is one row with:
+- `JournalEntryType = 1` (Hold) and `JournalAmountDelta = -100` (100.00 debited from the source account);
 - `ComplianceStatus = 2` (Passed);
-- `LedgerAmount = 100` и непустым `LedgerCommittedAt`.
+- `LedgerAmount = 100` and a non-empty `LedgerCommittedAt`.
 
-Если строка не появилась — проверьте статусы sink-коннекторов (`curl -s http://localhost:8083/connectors/clickhouse-sink-ledger/status`)
-и раздел «Как убедиться, что пайплайн работает» в `docs/data-analytics/README.ru.md` §4.
+If the row did not appear — check the sink connectors' status
+(`curl -s http://localhost:8083/connectors/clickhouse-sink-ledger/status`) and the "How to verify the pipeline is
+working" section in [`docs/data-analytics/README.md`](../data-analytics/README.md) §4.
 
 ---
 
-## Итог
+## Summary
 
-Если все 5 шагов прошли успешно — вы проверили вживую весь контур: HTTP-прослойку (Gateway → Processing.Api),
-распределённую сагу (SagaOrchestrator → AccountBalance → Compliance → CoreLedger) с распределённой блокировкой и
-декларативными правилами, инфраструктурное HMAC-маскирование (параллельно пишется в `*.security`-топики, см.
-`docs/reliability/README.ru.md`), стек наблюдаемости (Prometheus/Loki/Jaeger) и CDC-аналитику (Debezium → Kafka
-Connect ClickHouse Sink → ClickHouse → Metabase).
+If all 5 steps succeeded — you have verified the entire system live: the HTTP layer (Gateway → Processing.Api),
+the distributed saga (SagaOrchestrator → AccountBalance → Compliance → CoreLedger) with distributed locking and
+declarative rules, infrastructure-level HMAC masking (written in parallel to `*.security` topics, see
+[`docs/reliability/README.md`](../reliability/README.md)), the observability stack (Prometheus/Loki/Jaeger), and
+the CDC analytics pipeline (Debezium → Kafka Connect ClickHouse Sink → ClickHouse → Metabase).

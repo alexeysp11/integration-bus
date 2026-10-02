@@ -90,9 +90,9 @@ ledger-commit step.
 ```text
 [Hold] ──> [Compliance Check] ──> [Ledger Commit (Routing Slip)] ──> [Confirm]
    │               │                        │                          │
-   └── terminal     └── release hold         └── local technical        └── release hold
+   └── terminal    └── release hold         └── local technical        └── release hold
        (no               (global                  rollback across          (global
-       compensation)     compensation)             WriteAuditTrail/         compensation)
+       compensation)     compensation)            WriteAuditTrail/         compensation)
                                                     UpdateCache/
                                                     PublishLedgerCommitted
 ```

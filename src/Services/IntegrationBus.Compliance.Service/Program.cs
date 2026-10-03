@@ -7,7 +7,6 @@ using IntegrationBus.Compliance.Service.DbContexts;
 using IntegrationBus.Compliance.Service.Rules;
 using IntegrationBus.Contracts;
 using IntegrationBus.Shared.Extensions;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 
 try

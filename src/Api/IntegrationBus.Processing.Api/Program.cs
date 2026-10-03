@@ -1,5 +1,4 @@
 using Asp.Versioning;
-using Confluent.Kafka;
 using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.Contracts;
 using IntegrationBus.Processing.Api.Extensions;

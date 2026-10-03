@@ -1,4 +1,3 @@
-using FluentAssertions;
 using IntegrationBus.CoreLedger.Contracts.Messages.Events;
 using IntegrationBus.CoreLedger.Service.Consumers;
 using MassTransit;

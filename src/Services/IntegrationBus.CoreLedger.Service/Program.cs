@@ -9,9 +9,7 @@ using IntegrationBus.CoreLedger.Service.DbContexts;
 using IntegrationBus.Contracts;
 using IntegrationBus.Shared.Extensions;
 using IntegrationBus.Shared.Security;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 try

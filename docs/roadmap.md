@@ -134,29 +134,29 @@ This document outlines the complete iterative implementation plan for the `integ
     - Prometheus target dashboard status (`http://localhost:9090/targets`) shows all configured microservice scraping jobs as `UP`.
 
 ### 📌 End-to-End Distributed Tracing (Jaeger & MassTransit)
-* **Status:** **`Pending ⏳`**
+* **Status:** **`Done ✅`**
 * **Git Branch:** `infra/observability-tracing`
 * **Description:** Implement comprehensive distributed tracing to expose asynchronous communication pathways. Configure the OpenTelemetry Tracing SDK to listen to MassTransit native activity sources, facilitating automatic `TraceId` injection and extraction over Kafka message headers, and export telemetry to a centralized Jaeger collector.
 * **Todo List:**
-    - [ ] Integrate OpenTelemetry Tracing SDK into .NET services and explicitly register `.AddSource("MassTransit")` to listen to internal framework activity streams.
-    - [ ] Configure the OTLP exporter options within the service builder to push telemetry data via gRPC (`http://localhost:4317`) to the central collector.
-    - [ ] Provision a Jaeger `all-in-one` container in `docker-compose.yml` with OTLP ports enabled and map the web UI port (`16686`) for browser access.
-    - [ ] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans.
+    - [x] Integrate OpenTelemetry Tracing SDK into .NET services and explicitly register `.AddSource("MassTransit")` to listen to internal framework activity streams.
+    - [x] Configure the OTLP exporter options within the service builder to push telemetry data via gRPC (`http://localhost:4317`) to the central collector.
+    - [x] Provision a Jaeger `all-in-one` container in `docker-compose.yml` with OTLP ports enabled and map the web UI port (`16686`) for browser access.
+    - [x] Verify that triggering a `StartTransactionSaga` command generates a unified root `TraceId` that smoothly propagates across Kafka topics into downstream consumer spans. _(**Verified live** against a real `docker compose up` run: a transaction's trace in Jaeger shows a single `TraceId` spanning `gateway-api` → `processing-api` → `saga-orchestrator-service` → `account-balance-service` → `compliance-service` → `core-ledger-service`, including the Courier Routing Slip's 3 execute activities and the Postgres (`saga_db`) spans. See [`docs/observability/README.md`](observability/README.md) §5.)_
 * **Definition of Done:**
     - Jaeger UI visualizes interactive asynchronous waterfall graphs mapping the complete lifecycle of a single Saga.
     - Every network hop between `SagaOrchestrator` and processing services is captured as an interconnected child span under a single `TraceId`.
     - Database operations or HTTP calls executed during a message context are automatically attached to the active trace span.
 
 ### 📌 Centralized Log Analytics & Correlative Search (Loki & Serilog)
-* **Status:** **`Pending ⏳`**
+* **Status:** **`Done ✅`**
 * **Git Branch:** `infra/observability-logs`
 * **Description:** Centralize application logs by migrating from standard text files to a high-performance, lightweight Grafana Loki stream engine. Configure Serilog to enrich every log entry with active OpenTelemetry contexts (`TraceId`, `SpanId`), enabling instant cross-referencing between system logs and trace waterfalls.
 * **Todo List:**
-    - [ ] Provision a Grafana Loki container inside `docker-compose.yml` along with a minimal configuration file defining retention and storage behaviors.
-    - [ ] Install `Serilog.Sinks.Grafana.Loki` NuGet package across the entire microservice ecosystem.
-    - [ ] Configure the Serilog logging pipeline to append `.Enrich.FromLogContext()` and route structured JSON streams to the Loki endpoint.
-    - [ ] Ensure that MassTransit contextual properties like `CorrelationId` and active OTel `TraceId`/`SpanId` are automatically mapped into Loki log labels or metadata.
-    - [ ] Configure Grafana to use Loki as a data source and verify the functionality of log-to-trace navigation panels.
+    - [x] Provision a Grafana Loki container inside `docker-compose.yml` along with a minimal configuration file defining retention and storage behaviors.
+    - [x] Install `Serilog.Sinks.Grafana.Loki` NuGet package across the entire microservice ecosystem.
+    - [x] Configure the Serilog logging pipeline to append `.Enrich.FromLogContext()` and route structured JSON streams to the Loki endpoint.
+    - [x] Ensure that active OTel `TraceId`/`SpanId` are automatically mapped into Loki log labels/fields (via `Serilog.Enrichers.Span`'s `WithSpan()` enricher).
+    - [ ] Configure Grafana to use Loki as a data source and verify the functionality of log-to-trace navigation panels. _(documented step-by-step in [`docs/observability/README.md`](observability/README.md) §3.2 and §5; not yet clicked through against a live stack.)_
 * **Definition of Done:**
     - Microservice console footprints are minimal, with all structured application logs streaming directly into the Loki instance.
     - Querying a raw `CorrelationId` string inside the Grafana Explore panel aggregates multi-service execution logs chronologically.
@@ -167,59 +167,71 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🧪 Stage 3: Reliability Engineering & Integration Testing
 
 ### 📌 Quality Assurance: Core Domain Unit and Local Database Integration Testing
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `test/core-domain-testing`
 *   **Description:** Establish the foundational testing infrastructure across the solution. Implement lightweight unit tests for isolated domain business logic and stateful integration tests using Testcontainers or an in-memory database to verify direct repository interactions, custom SQL scripts, and database constraints without triggering full distributed saga lifecycles.
 *   **Todo List:**
-    - [ ] Initialize core testing projects across services using `xUnit`, `FluentAssertions`, and `Moq`/`NSubstitute`.
-    - [ ] Implement isolated unit tests for core domain verification methods, focusing on balance boundary validation and compliance check logic.
-    - [ ] Setup a local database integration testing harness (utilizing temporary database containers or optimized schema definitions) to validate raw Dapper commands and EF Core mappings.
-    - [ ] Code specific integration test cases verifying database constraint violations (e.g., duplicate unique index inserts) and multi-row transaction isolation boundaries.
+    - [x] Initialize core testing projects across services using `xUnit`, `FluentAssertions`, and `Moq`/`NSubstitute`. _(7 test projects: Processing.Api, AccountBalance.Service, Compliance.Service, CoreLedger.Service, SagaOrchestrator.Service, Analytics, Shared.)_
+    - [x] Implement isolated unit tests for core domain verification methods, focusing on balance boundary validation and compliance check logic.
+    - [x] Setup a local database integration testing harness (utilizing temporary database containers or optimized schema definitions) to validate raw Dapper commands and EF Core mappings. _(Testcontainers.PostgreSql across `AccountBalance.Service.Tests`, `CoreLedger.Service.Tests`, `SagaOrchestrator.Service.Tests`; Testcontainers.Redis for `UpdateCacheActivity`.)_
+    - [x] Code specific integration test cases verifying database constraint violations (e.g., duplicate unique index inserts) and multi-row transaction isolation boundaries. _(idempotency guards verified for `Hold`/`Confirm`/`Release`/`TopUp` consumers under real Postgres.)_
 *   **Definition of Done:**
-    - Running `dotnet test` from the root of the repository executes all tests successfully.
+    - Running `dotnet test` from the root of the repository executes all tests successfully. **Verified:** `dotnet test IntegrationBus.slnx` → 7/7 projects green, 119 tests passed, 0 failed.
     - Local repository tests accurately verify data insertion, reading, and rollbacks directly inside isolated microservice databases (`Accounting`, `Compliance`, `Ledger`).
-    - The testing lifecycle does not affect or pollute active local development or production databases.
+    - The testing lifecycle does not affect or pollute active local development or production databases. _(each test class provisions its own disposable Testcontainers instance.)_
 
 ### 📌 Integration Testing for Saga Compensations
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `test/integration-testing-saga`
 *   **Description:** Add a comprehensive integration test suite using `WebApplicationFactory` and the MassTransit test harness to ensure that infrastructure and business validation errors trigger the correct automated rollback behaviors.
 *   **Todo List:**
-    - [ ] Setup an integration test project using `xUnit` and `FluentAssertions`.
-    - [ ] Write an integration test case for a complete successful happy path saga execution.
-    - [ ] Write an integration test case where the `Compliance` step artificially fails, verifying that the `AccountBalance` state is fully compensated and rolled back.
+    - [x] Setup an integration test project using `xUnit` and `FluentAssertions`. _(`IntegrationBus.SagaOrchestrator.Service.Tests`.)_
+    - [x] Write an integration test case for a complete successful happy path saga execution. _(`TransactionSagaStateMachineTests.HappyPath_ShouldProgressThroughEveryStateToCompleted`.)_
+    - [x] Write an integration test case where the `Compliance` step artificially fails, verifying that the `AccountBalance` state is fully compensated and rolled back. _(`ComplianceFailure_ShouldCompensateTheAccountBalanceHoldAndTransitionToFailed`, plus the two other compensation paths this task didn't originally call out: `HoldAccountBalanceFailure` (terminal, no compensation) and `WriteLedgerRecordFailure`/`ConfirmAccountBalanceFailure` (both compensate via `ReleaseAccountBalance`).)_
+    - [x] *(Beyond the original scope)* Prove the Transactional Outbox/Consumer Inbox pattern survives a mid-saga broker outage: `OutboxResilienceTests` uses a real Testcontainers Postgres + the production EF Outbox wiring and a flaky `ITopicProducer` to show the state transition rolls back atomically on dispatch failure, then completes exactly once on redelivery.
 *   **Definition of Done:**
-    - Test pipeline passes locally.
-    - Compensation logic is fully asserted without relying on actual external Docker containers (using local test harness).
+    - Test pipeline passes locally. **Verified:** 6/6 tests green in `IntegrationBus.SagaOrchestrator.Service.Tests`.
+    - Compensation logic is fully asserted without relying on actual external Docker containers (using local test harness). _(`TransactionSagaStateMachineTests` uses MassTransit's pure in-memory `.InMemoryRepository()` test harness, no Docker; `OutboxResilienceTests` deliberately adds a real Postgres container specifically to validate the EF Outbox, which cannot be tested in-memory.)_
 
 ### 📌 Introduce Distributed Locks and Rules Engine
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/distributed-locks`
 *   **Description:** Protect the Balance service from concurrency issues and race conditions under heavy load using Redis distributed locks, and migrate compliance validations into an expandable declarative JSON structure.
 *   **Todo List:**
-    - [ ] Add a `Redis` instance into the `docker-compose.yml` file.
-    - [ ] Integrate `RedLock.net` inside `HoldMoneyActivity` to lock account IDs mid-transaction.
-    - [ ] Install `Microsoft.RulesEngine` NuGet package in `Compliance.Service` and load threshold definitions from a local JSON config.
+    - [x] Add a `Redis` instance into the `docker-compose.yml` file. _(container already existed; now actually consumed by application code via `StackExchange.Redis`/`RedLock.net`.)_
+    - [x] Integrate `RedLock.net` inside `HoldAccountBalanceConsumer` (this codebase's equivalent of `HoldMoneyActivity`) to lock account IDs mid-transaction. See [`docs/reliability/README.md`](reliability/README.md).
+    - [x] Install the `RulesEngine` NuGet package in `Compliance.Service` and load threshold definitions from a local JSON config (`Rules/compliance-rules.json`). See [`docs/reliability/README.md`](reliability/README.md) §4.
 *   **Definition of Done:**
     - Concurrent requests to the same account ID are queued/handled safely via Redis without balance race conditions.
     - Compliance service dynamically evaluates transactions based on externalized JSON rules.
+
+### 📌 CI/CD: Automated Build & Test Pipeline
+*   **Status:** **`Done ✅`**
+*   **Git Branch:** `feature/data-analytics`
+*   **Description:** Automate build and quality verification on every push/PR via GitHub Actions, so the test suite documented above actually gates the `main` branch instead of relying on manual local runs.
+*   **Todo List:**
+    - [x] Add `.github/workflows/ci.yml`, triggered on push/PR to `main`.
+    - [x] Pipeline steps: `actions/setup-dotnet` (.NET 10 SDK) → `dotnet restore IntegrationBus.slnx` → `dotnet build --configuration Release --no-restore` → `dotnet test --no-build --verbosity normal`.
+*   **Definition of Done:**
+    - Pushing to or opening a PR against `main` triggers the workflow automatically.
+    - The workflow fails the check if the solution doesn't build in Release or any test fails.
 
 ---
 
 ## 📊 Stage 4: Real-Time Analytical Contour (DWH) & Data Masking
 
 ### 📌 Setup Real-Time Analytics Pipeline with Debezium and ClickHouse
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Done ✅`**
 *   **Git Branch:** `feature/dwh-loading-pipeline`
 *   **Description:** Build an isolated real-time analytical layer. Capture changes from multiple isolated Postgres databases via WAL logs using Change Data Capture (CDC) without affecting production transactional performance.
 *   **Todo List:**
-    - [ ] Add `Debezium (Kafka Connect)`, `ClickHouse`, and `Metabase` containers to `docker-compose.yml`.
-    - [ ] Register Postgres source connectors in Debezium for all three microservice databases.
-    - [ ] Create raw Staging tables in ClickHouse linked to Kafka engine topics.
-    - [ ] Implement ClickHouse `Materialized Views` to transform, join, and aggregate data streams into a flat analytic cube.
+    - [x] Add `Debezium (Kafka Connect)`, `ClickHouse`, and `Metabase` containers to `docker-compose.yml`.
+    - [x] Register Postgres source connectors in Debezium for all three microservice databases.
+    - [x] Create raw Staging tables in ClickHouse linked to Kafka engine topics.
+    - [x] Implement ClickHouse `Materialized Views` to transform, join, and aggregate data streams into a flat analytic cube (`analytics.transaction_cube`).
 *   **Definition of Done:**
-    - Inserting data into transactional Postgres databases automatically streams data to ClickHouse in real-time with zero manual SQL selects.
-    - Metabase successfully connects to ClickHouse pre-aggregated data marts to render financial reports.
+    - Inserting data into transactional Postgres databases automatically streams data to ClickHouse in real-time with zero manual SQL selects. **Verified live** end-to-end (see [`docs/data-analytics/README.md`](data-analytics/README.md) §4) and covered by `tests/IntegrationBus.Analytics.Tests`.
+    - Metabase successfully connects to ClickHouse pre-aggregated data marts to render financial reports. Driver auto-provisioned; connection steps documented in [`docs/data-analytics/README.md`](data-analytics/README.md) §5.
 
 ### 📌 Prod-to-Test Data Masking Pipeline
 *   **Status:** **`Pending ⏳`**
@@ -237,15 +249,15 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🌐 Stage 5: Cloud-Native Migration (Kubernetes Deployment)
 
 ### 📌 Kubernetes and Helm Migration
-*   **Status:** **`Pending ⏳`**
-*   **Git Branch:** `feature/k8s-migration`
-*   **Description:** Transition away from Docker Compose and prepare the entire platform topology for running inside a scalable, cloud-native orchestration environment.
+*   **Status:** **`Done ✅`**
+*   **Git Branch:** `feature/data-analytics`
+*   **Description:** Prepare the entire platform topology (not a replacement of docker-compose, but an additional deployment path alongside it) for running inside a scalable, cloud-native orchestration environment.
 *   **Todo List:**
-    - [ ] Write optimized, multi-stage `Dockerfile`s for all .NET microservices.
-    - [ ] Initialize a structured Helm Chart hierarchy inside `/deploy/k8s/charts`.
-    - [ ] Define Kubernetes Deployments, Cluster Services, ConfigMaps, and CPU/Memory resource limits for every component.
+    - [x] Write optimized, multi-stage `Dockerfile`s for all .NET microservices. _(already in place from earlier streams -- no changes needed, they build cleanly for any container runtime.)_
+    - [x] Initialize a structured Helm Chart hierarchy inside `/deploy/k8s/charts`. _(single umbrella chart `integration-bus` covering all 18 docker-compose workloads: 6 .NET services, Kafka, Postgres, Redis, Kafka Connect/Debezium, ClickHouse, Metabase, Prometheus, Grafana, Loki, Jaeger, Kafka UI, Redis Commander.)_
+    - [x] Define Kubernetes Deployments, Cluster Services, ConfigMaps, and CPU/Memory resource limits for every component. _(`StatefulSet`+PVC for all stateful components; the 6 `Deployment`-based app services generated from one DRY template via `range` over `values.yaml`; resource requests/limits applied to the components the DoD names explicitly -- the 6 app services, Kafka, Postgres, Redis.)_
 *   **Definition of Done:**
-    - Running `helm install` fully provisions the entire cluster environment (App services + Kafka + Redis + Postgres) inside a local K3s or Kind cluster.
+    - Running `helm install` fully provisions the entire cluster environment (App services + Kafka + Redis + Postgres) inside a local K3s or Kind cluster. **Verified live** end-to-end on a clean Kind cluster: full black-box business flow (seed → topup → transaction → saga `Completed` → row in ClickHouse `transaction_cube` → trace visible in Jaeger across all 6 services) via the chart's NodePort mappings. See [`docs/k8s-deployment/README.ru.md`](k8s-deployment/README.ru.md), which also documents 3 real bugs found and fixed during live verification (Kafka self-connect deadlock through a non-headless Service, a too-short exec-probe timeout, and a missing Kafka PVC that silently dropped topics on pod recreation).
 
 ---
 
@@ -273,3 +285,27 @@ This document outlines the complete iterative implementation plan for the `integ
 *   **Definition of Done:**
     - The system achieves Exactly-Once processing guarantees.
     - Zero financial records are dropped or corrupted, and MassTransit successfully tracks or compensates interrupted routing slips.
+
+---
+
+## 🛡️ Stage 7: API Gateway Hardening & Identity
+
+### 📌 NGINX Ingress & Rate Limiting
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `feature/nginx-rate-limiting`
+*   **Description:** Place an `NGINX` layer in front of `Gateway.Api` to terminate TLS, sanitize headers, and enforce per-client rate limiting before traffic reaches the YARP proxy layer.
+*   **Todo List:**
+    - [ ] Add an `NGINX` reverse proxy container (or Ingress Controller, for the Kubernetes deployment path) in front of `Gateway.Api`.
+    - [ ] Configure TLS termination and per-client/per-route rate limiting rules.
+*   **Definition of Done:**
+    - Requests exceeding the configured rate limit receive `HTTP 429 Too Many Requests` before reaching `Gateway.Api`.
+
+### 📌 Keycloak OIDC Authentication & gRPC Token Validation
+*   **Status:** **`Pending ⏳`**
+*   **Git Branch:** `feature/keycloak-oidc-auth`
+*   **Description:** Introduce a `Keycloak` identity provider (OAuth2/OIDC) and validate inbound bearer tokens at the gateway layer via a dedicated gRPC validation service, so downstream services never need to implement authentication themselves.
+*   **Todo List:**
+    - [ ] Provision a `Keycloak` instance and define a realm/client for the platform.
+    - [ ] Add a gRPC token-validation service and call it from `Gateway.Api` before proxying any request.
+*   **Definition of Done:**
+    - Requests without a valid Keycloak-issued token are rejected at the gateway with `HTTP 401 Unauthorized`, before reaching `Processing.Api`.

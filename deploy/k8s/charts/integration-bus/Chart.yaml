@@ -1,0 +1,9 @@
+apiVersion: v2
+name: integration-bus
+description: >
+  Full integration-bus platform (6 .NET services, Kafka, Postgres, Redis, Debezium CDC,
+  ClickHouse, Metabase, Prometheus, Grafana, Loki, Jaeger) as a single Helm release,
+  translated 1:1 from the project's docker-compose.yml for local Kubernetes (Kind/K3s).
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -9,8 +9,12 @@ using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.AccountBalance.Service.Providers;
 using IntegrationBus.Contracts;
 using IntegrationBus.Shared.Extensions;
-using Microsoft.AspNetCore.Builder;
+using IntegrationBus.Shared.Security;
 using Microsoft.EntityFrameworkCore;
+using RedLockNet;
+using RedLockNet.SERedis;
+using RedLockNet.SERedis.Configuration;
+using StackExchange.Redis;
 
 try
 {
@@ -28,8 +32,10 @@ try
         options.UseNpgsql(builder.Configuration.GetConnectionString("BalanceDb")));
 
     builder.Services
+        .AddTelemetryResource("integration-bus-account-balance-service")
         .AddCoreMetrics()
-        .AddMassTransitMetrics();
+        .AddMassTransitMetrics()
+        .AddDistributedTracing();
 
     builder.Services.AddScoped<IAccountStateReconstructor, AccountStateReconstructor>();
 
@@ -40,6 +46,27 @@ try
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
         ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
+    string redisConnectionString = builder.Configuration["Redis:ConnectionString"]
+        ?? throw new InvalidOperationException("Redis connection string is not specified");
+
+    // Single shared multiplexer backs both the RedLock distributed lock factory and the cache health check
+    builder.Services.AddSingleton<IConnectionMultiplexer>(
+        _ => ConnectionMultiplexer.Connect(redisConnectionString));
+
+    builder.Services.AddSingleton<IDistributedLockFactory>(sp =>
+        RedLockFactory.Create([new RedLockMultiplexer(sp.GetRequiredService<IConnectionMultiplexer>())]));
+
+    builder.Services.AddHealthChecks()
+        .AddNpgSql(builder.Configuration.GetConnectionString("BalanceDb")!, name: "postgres")
+        .AddKafka(config => config.BootstrapServers = kafkaConnectionString, name: "kafka")
+        .AddRedis(redisConnectionString, name: "redis");
+
+    // Infrastructure-level data masking pipeline: mirrors HMAC-hashed shadow copies of confidential fields
+    // (account identifiers, balances) into Kafka security topics
+    builder.Services.AddSingleton<IHmacMaskingService, HmacMaskingService>();
+    builder.Services.AddSingleton<ISecurityTopicPublisher>(sp =>
+        new KafkaSecurityTopicPublisher(kafkaConnectionString, sp.GetRequiredService<ILogger<KafkaSecurityTopicPublisher>>()));
 
     builder.Services.AddMassTransit(x =>
     {
@@ -83,6 +110,10 @@ try
                     "balance-service-group",
                     e =>
                     {
+                        e.UseFilter(new SensitiveDataMaskingFilter<HoldAccountBalance>(
+                            KafkaTopics.AccountBalanceHold,
+                            context.GetRequiredService<IHmacMaskingService>(),
+                            context.GetRequiredService<ISecurityTopicPublisher>()));
                         e.ConfigureConsumer<HoldAccountBalanceConsumer>(context);
                     });
                 k.TopicEndpoint<TopUpAccountBalance>(
@@ -119,6 +150,7 @@ try
 
     WebApplication app = builder.Build();
 
+    app.MapHealthChecks("/health");
     app.UseMetricsScraping();
 
     using (IServiceScope scope = app.Services.CreateScope())

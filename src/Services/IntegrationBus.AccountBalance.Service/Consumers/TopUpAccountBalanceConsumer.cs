@@ -38,6 +38,13 @@ public sealed class TopUpAccountBalanceConsumer(
         FROM ""{nameof(BalanceDbContext.JournalEntries)}""
         WHERE ""{nameof(AccountJournalEntryEntity.SourceAccountId)}"" = @AccountId;";
 
+    private const string DepositEntryExistsSql = $@"
+        SELECT 1
+        FROM ""{nameof(BalanceDbContext.JournalEntries)}""
+        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId
+          AND ""{nameof(AccountJournalEntryEntity.EntryType)}"" = @EntryType
+        LIMIT 1;";
+
     private const string InsertJournalSql = $@"
         INSERT INTO ""{nameof(BalanceDbContext.JournalEntries)}"" (
             ""{nameof(AccountJournalEntryEntity.SourceAccountId)}"",
@@ -69,6 +76,32 @@ public sealed class TopUpAccountBalanceConsumer(
 
         try
         {
+            // Idempotency guard: a redelivered top-up for a TransactionId that already posted its deposit entry
+            // is replayed without crediting the account a second time
+            bool alreadyDeposited = await connection.ExecuteScalarAsync<int?>(
+                DepositEntryExistsSql,
+                new { message.TransactionId, EntryType = (int)JournalEntryType.DirectDeposit },
+                transaction) is not null;
+
+            if (alreadyDeposited)
+            {
+                await transaction.CommitAsync(context.CancellationToken);
+
+                logger.LogInformation(
+                    "Duplicate TopUpAccountBalance delivery detected for Tx: {TransactionId}; replaying the success event without a second deposit.",
+                    message.TransactionId);
+
+                await passedProducer.Produce(new TopUpAccountBalancePassed
+                {
+                    TransactionId = message.TransactionId,
+                    AccountId = message.AccountId,
+                    Amount = message.Amount,
+                    CompletedAtUtc = DateTime.UtcNow
+                }, context.CancellationToken);
+
+                return;
+            }
+
             // 1. Verify target account existence and enforce strict currency compatibility constraints
             int accountCurrencyValue = await connection.QuerySingleOrDefaultAsync<int?>(
                     GetAccountMetadataSql, new { message.AccountId }, transaction)

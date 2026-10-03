@@ -5,17 +5,20 @@ using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.Compliance.Service.DbContexts;
 using IntegrationBus.Compliance.Service.Entities;
 using IntegrationBus.Compliance.Service.Enums;
+using IntegrationBus.Compliance.Service.Rules;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace IntegrationBus.Compliance.Service.Consumers;
 
 /// <summary>
-/// Handles incoming regulatory and anti-fraud compliance verification requests from the Saga Orchestrator.
+/// Handles incoming regulatory and anti-fraud compliance verification requests from the Saga Orchestrator,
+/// evaluating each transaction against the declarative JSON rule workflow via <see cref="IComplianceRulesEvaluator"/>.
 /// </summary>
 public sealed class CheckComplianceLimitsConsumer(
     ILogger<CheckComplianceLimitsConsumer> logger,
     ComplianceDbContext dbContext,
+    IComplianceRulesEvaluator rulesEvaluator,
     ITopicProducer<CheckComplianceLimitsPassed> passedProducer,
     ITopicProducer<CheckComplianceLimitsFailed> failedProducer) : IConsumer<CheckComplianceLimits>
 {
@@ -56,7 +59,17 @@ public sealed class CheckComplianceLimitsConsumer(
 
         try
         {
-            // Log the audit record confirming that compliance validation successfully passed
+            ComplianceRuleInput ruleInput = new()
+            {
+                TransactionId = message.TransactionId,
+                SourceAccountId = message.SourceAccountId,
+                TargetAccountId = message.TargetAccountId,
+                Amount = message.Amount,
+                Currency = (int)message.Currency
+            };
+
+            ComplianceEvaluationResult evaluation = await rulesEvaluator.EvaluateAsync(ruleInput, context.CancellationToken);
+
             await connection.ExecuteAsync(InsertAuditSql, new
             {
                 Id = Guid.NewGuid(),
@@ -65,12 +78,27 @@ public sealed class CheckComplianceLimitsConsumer(
                 message.TargetAccountId,
                 message.Amount,
                 message.Currency,
-                Status = ComplianceStatus.Passed,
-                FailureReason = (string?)null,
+                Status = evaluation.IsCompliant ? ComplianceStatus.Passed : ComplianceStatus.Failed,
+                FailureReason = evaluation.FailureReason,
                 CreatedAtUtc = DateTime.UtcNow
             }, transaction);
 
             await transaction.CommitAsync(context.CancellationToken);
+
+            if (!evaluation.IsCompliant)
+            {
+                logger.LogWarning(
+                    "Compliance rule workflow rejected TransactionId: {TransactionId}. Reason: {Reason}",
+                    message.TransactionId, evaluation.FailureReason);
+
+                await failedProducer.Produce(new CheckComplianceLimitsFailed
+                {
+                    TransactionId = message.TransactionId,
+                    Reason = evaluation.FailureReason ?? "Transaction violated the compliance rule workflow."
+                }, context.CancellationToken);
+
+                return;
+            }
 
             logger.LogInformation("Successfully persisted and dispatched compliance passing event for TransactionId: {TransactionId}", message.TransactionId);
 

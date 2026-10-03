@@ -8,7 +8,7 @@ namespace IntegrationBus.SagaOrchestrator.Service.Activities;
 /// <summary>
 /// State machine activity designed to dispatch the balance confirmation command once the core ledger record is safely written.
 /// </summary>
-public sealed class ConfirmAccountBalanceActivity(ITopicProducer<ConfirmAccountBalance> producer) :
+public sealed class ConfirmAccountBalanceActivity(ILogger<ConfirmAccountBalanceActivity> logger, ITopicProducer<ConfirmAccountBalance> producer) :
     IStateMachineActivity<TransactionSagaInstance, WriteLedgerRecordPassed>
 {
     /// <inheritdoc />
@@ -26,6 +26,10 @@ public sealed class ConfirmAccountBalanceActivity(ITopicProducer<ConfirmAccountB
         BehaviorContext<TransactionSagaInstance, WriteLedgerRecordPassed> context,
         IBehavior<TransactionSagaInstance, WriteLedgerRecordPassed> next)
     {
+        logger.LogInformation(
+            "Saga step 4/4 | Ledger record committed, dispatching ConfirmAccountBalance for Tx: {TransactionId}",
+            context.Saga.CorrelationId);
+
         // Emit the command payload targeting the Accounting service to apply immutable double-entry records
         await producer.Produce(new ConfirmAccountBalance
         {

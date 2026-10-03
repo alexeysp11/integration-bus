@@ -1,0 +1,48 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: integration-bus
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Convention: Kind host port = original docker-compose host port + 10000.
+      # Chosen deliberately so the K8s deployment can run side-by-side with the existing
+      # docker-compose stack on the same machine without any port conflicts.
+      - containerPort: 30038 # Gateway.Api              (compose: 5038)
+        hostPort: 15038
+        protocol: TCP
+      - containerPort: 30201 # Processing.Api           (compose: 5201)
+        hostPort: 15201
+        protocol: TCP
+      - containerPort: 30061 # SagaOrchestrator /health  (compose: 6001)
+        hostPort: 16001
+        protocol: TCP
+      - containerPort: 30062 # AccountBalance /health    (compose: 6002)
+        hostPort: 16002
+        protocol: TCP
+      - containerPort: 30063 # Compliance /health        (compose: 6003)
+        hostPort: 16003
+        protocol: TCP
+      - containerPort: 30064 # CoreLedger /health        (compose: 6004)
+        hostPort: 16004
+        protocol: TCP
+      - containerPort: 30000 # Grafana                  (compose: 3000)
+        hostPort: 13000
+        protocol: TCP
+      - containerPort: 30686 # Jaeger UI                (compose: 16686)
+        hostPort: 26686
+        protocol: TCP
+      - containerPort: 30090 # Prometheus               (compose: 9090)
+        hostPort: 19090
+        protocol: TCP
+      - containerPort: 30080 # Kafka UI                 (compose: 8080)
+        hostPort: 18080
+        protocol: TCP
+      - containerPort: 30082 # Redis Commander          (compose: 8082)
+        hostPort: 18082
+        protocol: TCP
+      - containerPort: 30001 # Metabase                 (compose: 3001)
+        hostPort: 13001
+        protocol: TCP
+      - containerPort: 30083 # Kafka Connect REST       (compose: 8083)
+        hostPort: 18083
+        protocol: TCP

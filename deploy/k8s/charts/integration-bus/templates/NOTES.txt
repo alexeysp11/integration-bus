@@ -1,0 +1,25 @@
+integration-bus is being provisioned in namespace "{{ .Release.Namespace }}".
+
+Core resources (Postgres, Redis, Kafka, the 6 .NET services) start immediately.
+Two post-install Jobs finish the provisioning:
+  - integration-bus-kafka-provisioner   (creates all Kafka topics)
+  - integration-bus-metabase-driver-setup (downloads the ClickHouse Metabase driver)
+Then integration-bus-debezium-registrar registers the 3 Debezium source + 3 ClickHouse sink connectors.
+
+Watch progress with:
+  kubectl get pods -n {{ .Release.Namespace }} -w
+
+If you created the cluster with deploy/k8s/kind/kind-cluster.yaml, these are reachable directly
+on localhost (host port = docker-compose port + 10000):
+
+  Gateway.Api            http://localhost:15038/health
+  Processing.Api         http://localhost:15201/health
+  Grafana                http://localhost:13000      (admin / {{ .Values.grafana.adminPassword }})
+  Jaeger UI              http://localhost:26686
+  Prometheus             http://localhost:19090
+  Kafka UI               http://localhost:18080
+  Redis Commander        http://localhost:18082
+  Metabase               http://localhost:13001
+  Kafka Connect REST     http://localhost:18083/connectors
+
+See docs/k8s-deployment.md for the full black-box validation walkthrough.

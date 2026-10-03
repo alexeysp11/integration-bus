@@ -15,6 +15,8 @@ public sealed record WriteLedgerRecordFailed
     /// </summary>
     public string Reason { get; init; } = string.Empty;
 
-    // TODO: add XML comment.
+    /// <summary>
+    /// Gets the exact timestamp tracking when the ledger write failure event occurred.
+    /// </summary>
     public DateTime FailedAt { get; init; } = DateTime.UtcNow;
 }

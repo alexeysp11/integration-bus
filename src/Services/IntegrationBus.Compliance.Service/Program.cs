@@ -4,9 +4,9 @@ using IntegrationBus.Compliance.Contracts.Messages.Commands;
 using IntegrationBus.Compliance.Contracts.Messages.Events;
 using IntegrationBus.Compliance.Service.Consumers;
 using IntegrationBus.Compliance.Service.DbContexts;
+using IntegrationBus.Compliance.Service.Rules;
 using IntegrationBus.Contracts;
 using IntegrationBus.Shared.Extensions;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 
 try
@@ -24,12 +24,22 @@ try
     builder.Services.AddDbContext<ComplianceDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("ComplianceDb")));
 
+    builder.Services.Configure<ComplianceRulesOptions>(
+        builder.Configuration.GetSection("ComplianceRules"));
+    builder.Services.AddSingleton<IComplianceRulesEvaluator, ComplianceRulesEvaluator>();
+
     builder.Services
+        .AddTelemetryResource("integration-bus-compliance-service")
         .AddCoreMetrics()
-        .AddMassTransitMetrics();
+        .AddMassTransitMetrics()
+        .AddDistributedTracing();
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
         ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
+    builder.Services.AddHealthChecks()
+        .AddNpgSql(builder.Configuration.GetConnectionString("ComplianceDb")!, name: "postgres")
+        .AddKafka(config => config.BootstrapServers = kafkaConnectionString, name: "kafka");
 
     builder.Services.AddMassTransit(x =>
     {
@@ -59,6 +69,7 @@ try
 
     WebApplication app = builder.Build();
 
+    app.MapHealthChecks("/health");
     app.UseMetricsScraping();
 
     using (IServiceScope scope = app.Services.CreateScope())

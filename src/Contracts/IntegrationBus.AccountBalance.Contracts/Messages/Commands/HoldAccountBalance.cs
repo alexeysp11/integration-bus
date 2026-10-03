@@ -1,4 +1,5 @@
 ﻿using IntegrationBus.Contracts.Enums;
+using IntegrationBus.Contracts.Security;
 
 namespace IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 
@@ -15,11 +16,13 @@ public sealed record HoldAccountBalance
     /// <summary>
     /// Gets the source account identifier where funds must be locked.
     /// </summary>
+    [SensitiveData]
     public required Guid AccountFromId { get; init; }
 
     /// <summary>
     /// Gets the target account identifier where funds must be locked.
     /// </summary>
+    [SensitiveData]
     public required Guid AccountToId { get; init; }
 
     /// <summary>
@@ -30,5 +33,6 @@ public sealed record HoldAccountBalance
     /// <summary>
     /// Gets the exact financial amount to allocate.
     /// </summary>
+    [SensitiveData]
     public required decimal Amount { get; init; }
 }

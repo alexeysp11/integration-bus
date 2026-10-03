@@ -11,7 +11,6 @@ using IntegrationBus.SagaOrchestrator.Contracts.Messages.Commands;
 using IntegrationBus.SagaOrchestrator.Service.DbContexts;
 using IntegrationBus.SagaOrchestrator.Service.Sagas;
 using IntegrationBus.Shared.Extensions;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 
 try
@@ -33,11 +32,17 @@ try
     });
 
     builder.Services
+        .AddTelemetryResource("integration-bus-saga-orchestrator-service")
         .AddCoreMetrics()
-        .AddMassTransitMetrics();
+        .AddMassTransitMetrics()
+        .AddDistributedTracing();
 
     string kafkaConnectionString = builder.Configuration["Kafka:BootstrapServers"]
         ?? throw new InvalidOperationException("Kafka connection string is not specified");
+
+    builder.Services.AddHealthChecks()
+        .AddNpgSql(builder.Configuration.GetConnectionString("SagaDb")!, name: "postgres")
+        .AddKafka(config => config.BootstrapServers = kafkaConnectionString, name: "kafka");
 
     // Configure MassTransit with Kafka transport footprint
     builder.Services.AddMassTransit(x =>
@@ -166,6 +171,7 @@ try
 
     WebApplication app = builder.Build();
 
+    app.MapHealthChecks("/health");
     app.UseMetricsScraping();
 
     using (IServiceScope scope = app.Services.CreateScope())

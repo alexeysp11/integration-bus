@@ -26,8 +26,15 @@ public sealed class ReleaseAccountBalanceConsumer(
             ""{nameof(AccountJournalEntryEntity.TargetAccountId)}"",
             ""{nameof(AccountJournalEntryEntity.AmountDelta)}""
         FROM ""{nameof(BalanceDbContext.JournalEntries)}""
-        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId 
+        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId
             AND ""{nameof(AccountJournalEntryEntity.EntryType)}"" = @HoldType
+        LIMIT 1;";
+
+    private const string CancelledEntryExistsSql = $@"
+        SELECT 1
+        FROM ""{nameof(BalanceDbContext.JournalEntries)}""
+        WHERE ""{nameof(AccountJournalEntryEntity.TransactionId)}"" = @TransactionId
+          AND ""{nameof(AccountJournalEntryEntity.EntryType)}"" = @CancelledType
         LIMIT 1;";
 
     private const string MaxSequenceSql = $@"
@@ -80,6 +87,29 @@ public sealed class ReleaseAccountBalanceConsumer(
                 {
                     TransactionId = message.TransactionId,
                     SkippedAtUtc = DateTime.UtcNow
+                }, context.CancellationToken);
+
+                return;
+            }
+
+            // Idempotency guard: a redelivered release for a TransactionId whose hold was already cancelled
+            // is replayed without appending a second neutralizing credit for the same hold
+            bool alreadyReleased = await connection.ExecuteScalarAsync<int?>(
+                CancelledEntryExistsSql,
+                new { message.TransactionId, CancelledType = (int)JournalEntryType.Cancelled },
+                transaction) is not null;
+
+            if (alreadyReleased)
+            {
+                await transaction.CommitAsync(context.CancellationToken);
+
+                logger.LogInformation(
+                    "Duplicate ReleaseAccountBalance delivery detected for Tx: {TransactionId}; replaying the success event without a second compensating credit.",
+                    message.TransactionId);
+
+                await passedProducer.Produce(new ReleaseAccountBalancePassed
+                {
+                    TransactionId = message.TransactionId
                 }, context.CancellationToken);
 
                 return;

@@ -1,196 +1,162 @@
 # 🚌 integration-bus
 
-> **⚠️ Project Status: In Active Development (Stage 1 / MVP Skeleton)**  
-> This repository represents a live, step-by-step architectural evolution. Features documented below are being rolled out incrementally according to the project roadmap.
+A distributed financial transaction platform built around an asynchronous, two-level Saga: a **MassTransit Saga
+State Machine** (stateful, cross-service orchestration over Kafka) driving a **MassTransit Courier Routing Slip**
+(stateless, local multi-storage orchestration inside the ledger service). The project demonstrates a
+**Database-per-Service** topology, real-time CDC analytics, infrastructure-level data masking, and a full
+observability stack, all strictly targeting **production-ready** engineering quality in both code and documentation.
+
+> This repository is under active, iterative development. The table below reflects exactly what is implemented and
+> verified today; see [`docs/roadmap.md`](docs/roadmap.md) for the complete backlog, including everything still
+> planned.
 
 ### 📊 Implementation Progress
 - [x] **Stage 1: Core Architecture & Async Saga** — ✅ *Done*
-- [ ] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — 🔄 *In Progress*
-- [ ] **Stage 3: Reliability & Integration Testing** — ⏳ *Pending*
-- [ ] **Stage 4: Real-Time Analytics (DWH) & Masking** — ⏳ *Pending*
-- [ ] **Stage 5: Cloud-Native Migration (Kubernetes)** — ⏳ *Pending*
-- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending*
+- [x] **Stage 2: Observability (Prometheus, Grafana, Loki, Jaeger)** — ✅ *Done* — see [`docs/observability/README.md`](docs/observability/README.md)
+- [x] **Stage 3: Reliability & Integration Testing** — ✅ *Done* (distributed locks + rules engine, see [`docs/reliability/README.md`](docs/reliability/README.md))
+- [x] **Stage 4: Real-Time Analytics (DWH) & Masking** — ✅ *Done* (Debezium/ClickHouse/Metabase pipeline, see [`docs/data-analytics/README.md`](docs/data-analytics/README.md); infrastructure-level HMAC data masking, see [`docs/reliability/README.md`](docs/reliability/README.md))
+- [x] **Stage 5: Cloud-Native Migration (Kubernetes)** — ✅ *Done* (see [`docs/k8s-deployment/README.md`](docs/k8s-deployment/README.md))
+- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending* (strategy documented in [`docs/chaos-engineering/README.md`](docs/chaos-engineering/README.md), not yet executed)
+- [ ] **Stage 7: API Gateway Hardening (NGINX, Rate Limiting) & Identity (Keycloak OIDC)** — ⏳ *Pending* (planned, not yet implemented — see [`docs/roadmap.md`](docs/roadmap.md))
 
 ### 🔗 Quick Links & Documentation
 *   🗺️ **[Project Evolution Roadmap](docs/roadmap.md)** — Detailed task breakdowns, Done criteria, and milestones.
-*   🚀 **[API Specifications & Verification Rules](docs/api-specifications.md)** — HTTP contracts, JSON payload schemas, FluentValidation constraints, and manual testing procedures.
+*   🚀 **[API Specifications & Verification Rules](docs/business-logic/api-specifications.md)** — HTTP contracts, JSON payload schemas, FluentValidation constraints, and manual testing procedures.
+*   🎯 **[Black-Box Validation Guide](docs/business-logic/validation-guide.md)** — End-to-end scenario proving the whole stack works: HTTP → Saga → Observability → Analytics.
+*   ☸️ **[Kubernetes Deployment](docs/k8s-deployment/README.md)** — Full stack as one Helm chart; see [`GETTING-STARTED.md`](docs/k8s-deployment/GETTING-STARTED.md) for a zero-Kubernetes-experience walkthrough.
+*   📝 **[Documentation Guidelines](docs/documentation-guidelines.md)** — Strict formatting, language separation, and engineering style rules for human and AI-assisted writing.
+*   ⚙️ **[CI Pipeline](.github/workflows/ci.yml)** — GitHub Actions: restore, build (Release), full test run on every push/PR to `main`.
 *   📐 **[Git Contribution & Commit Guidelines](CONTRIBUTING.md)** — Semantic commit rules, branching strategy, and issue tracking linkage.
 
 ---
 
 ## 🎯 Project Overview
-This repository serves as a practical blueprint for **Platform Engineering** and **Advanced Cloud-Native System Design**. The goal is to build a highly resilient, enterprise-grade distributed financial system using a **Database-per-Service** architecture, with zero complex business logic under the hood.
 
-Instead of reinventing the wheel, this project focuses on high-load infrastructure integration, chaos engineering, real-time data streaming (CDC), and asynchronous orchestration of distributed transactions using **MassTransit Courier (Routing Slips)**, **Apache Kafka**, and **Kubernetes**.
+The goal is to build a resilient, enterprise-grade distributed financial system using a **Database-per-Service**
+architecture, with asynchronous orchestration of distributed transactions as the central engineering challenge —
+implemented with **MassTransit Courier (Routing Slips)**, **Apache Kafka**, and (for deployment) **Kubernetes**.
 
 ---
 
 ## 🧬 Architectural Topology
 
-The system topology is split into three decoupled operational layers: Core Transactional Runtime, Real-Time Analytics Pipeline, and Secure Data Anonymization.
+The system is split into three decoupled operational layers: the core transactional runtime, the real-time
+analytics pipeline, and infrastructure-level data masking.
 
 ### 1. Core Transactional Runtime (Saga Flow)
 
-This layer handles the lifecycle of synchronous incoming requests and orchestrates the distributed financial transaction across microservices using isolated databases (Database-per-Service).
-
 ```text
-       [ External Client / k6 Load Test ]
-                       │
-                       ▼
-         [ NGINX (SSL / Rate Limiting) ]
-                       │
-                       ▼
-       [ API Gateway (YARP HTTP Proxy) ]
-                       │
-       ┌───────────────┴───────────────┐
-       ▼ (gRPC Token Validation)       ▼ (HTTP Forwarding)
-[ Keycloak Auth ]                   [ WebAPI Processing Service ]
-                                       │
-                                       ▼ (Start Distributed Saga)
-                                    [ Apache Kafka (Events Broker) ]
-                                       ▲
-                                       │ (Saga Orchestration Steps Flow)
-                                    [ MassTransit / Stateful Orchestrator ]
-                                       │
-       ┌───────────────────────────────┼───────────────────────────────┐
-       ▼ (Step 1)                      ▼ (Step 2)                      ▼ (Step 3)
-[ Account Balance Service ]     [ Compliance Service ]          [ Core Ledger Service ]
-  └─► [ Redis + Postgres DB ]     └─► [ Postgres Comp DB ]        └─► [ Postgres Ledger DB ]
+                [ External Client ]
+                        │
+                        ▼
+          [ Gateway.Api (YARP HTTP Reverse Proxy) ]
+                        │
+                        ▼
+            [ Processing.Api (REST + Scalar) ]
+                        │
+                        ▼ (Publish StartTransactionSaga)
+                     [ Apache Kafka ]
+                        ▲
+                        │ (Saga orchestration steps)
+         [ SagaOrchestrator.Service — MassTransit Saga State Machine ]
+         (EF Core Transactional Outbox + Consumer Inbox)
+                        │
+       ┌────────────────┼────────────────────────────────┐
+       ▼ (Step 1)       ▼ (Step 2)                       ▼ (Step 3 — Courier Routing Slip)
+[ AccountBalance.Service ]  [ Compliance.Service ]   [ CoreLedger.Service ]
+  Redis Distributed Lock      Declarative RulesEngine   WriteAuditTrail → UpdateCache →
+  (RedLock.net) +              (JSON-configured limits)  PublishLedgerCommitted
+  event-sourced journal                                  (automatic technical rollback
+  + Postgres                  + Postgres                 on late-stage failure)
+                                                          + Postgres + Redis
 ```
 
-*Note on Storage Engines:* The **Account Balance Service** has been completely migrated from a legacy CRUD model to **Event Sourcing architecture**. All financial positions are derived dynamically from append-only logs wrapped with absolute checkpoint state snapshots to achieve zero persistent row lock contention.
+*Storage model:* `AccountBalance.Service` uses an **Event Sourcing** model — every balance mutation is an
+append-only journal entry (hold / release / confirm / top-up), with periodic snapshots for fast state
+reconstruction, eliminating row-lock contention under concurrent writes to the same account.
 
-### 2. Real-Time Analytical Contour (OLAP)
-
-*Note: This pipeline is executed symmetrically for all three transactional databases (`Balance DB`, `Compliance DB`, and `Ledger DB`). The diagram below illustrates the flow for a single database instance.*
+### 2. Real-Time Analytics Pipeline (CDC)
 
 ```text
- [ Postgres App DB ] (One of: Balance / Compliance / Ledger DB)
-         │
-         │ (Incremental Pull via IAsyncEnumerator)
+ Postgres (accounting_db / compliance_db / ledger_db, wal_level=logical)
+         │ logical replication (pgoutput)
          ▼
- ┌───────────────────────────────────────────────────────────────────┐
- │               [ Custom .NET 9 ETL Ingestion Worker ]              │
- │ - High-Watermark checkpoint tracking (WHERE id > max_id)          │
- │ - In-Memory Batching & Schema Validation (System.Threading)       │
- └─────────────────────────────────┬─────────────────────────────────┘
-                                   │
-                                   ▼ (Bulk Inserts in Patches)
-                       [ ClickHouse OLAP Cubes ]
-                                   │
-                                   ▼
-                     [ Metabase Dashboard Reports ]
-```
-
-### 3. Secure Data Anonymization Pipeline (Prod-to-Test)
-
-*Note: To protect production PII and banking secrets, this CDC pipeline replicates all transactional databases into mirrored, fully obfuscated environments for development and QA teams.*
-
-```text
- [ Postgres Prod DB ] (One of: Balance / Compliance / Ledger DB)
+ Kafka Connect (Debezium source connectors + official ClickHouse Kafka Connect Sink)
          │
-         │ (Asynchronous WAL Log Capture with zero OLTP CPU overhead)
+         ▼ (at-least-once, batched, offset committed only after ClickHouse ACK)
+ ClickHouse (ReplacingMergeTree tables + transaction_cube view)
+         │
          ▼
- ┌───────────────────────────────────────────────────────────────────┐
- │                     [ Debezium CDC Cluster ]                      │
- │ - Single Message Transformations (SMT) for on-the-fly masking     │
- │ - Deterministic salted hashing of Account IDs and PII data        │
- └─────────────────────────────────┬─────────────────────────────────┘
-                                   │
-                                   ▼ (Masked Obfuscated Stream)
-                       [ Kafka Security Topics ]
-                                   │
-                                   ▼ (Row-by-Row Ingestion)
-                     [ Isolated PostgreSQL Test DB ] 
-                       (balance_test / compliance_test / ledger_test)
+ Metabase dashboards
 ```
+
+See [`docs/data-analytics/README.md`](docs/data-analytics/README.md) for the full pipeline design.
+
+### 3. Infrastructure-Level Data Masking
+
+A generic MassTransit consume filter inspects every message for `[SensitiveData]`-attributed properties, mirrors an
+HMAC-SHA256-masked shadow copy onto a dedicated `{topic}.security` Kafka topic, and forwards the untouched original
+message to the real consumer unchanged. See [`docs/reliability/README.md`](docs/reliability/README.md).
 
 ---
 
 ## 🛠️ Technology Stack
 
-*   **Orchestration & Infrastructure:** `Kubernetes` (K3s / Kind) + `Helm` for cloud-native deployment.
-*   **Reverse Proxy & Gateway:** `NGINX` (Rate Limiting, Header Sanitization) + `YARP (Yet Another Reverse Proxy)` with built-in Keycloak JWT validation.
-*   **Identity & Access Management:** `Keycloak` (OAuth2/OIDC Auth Server).
-*   **Message Broker & Async Transport:** `Apache Kafka` + `MassTransit` (Courier / Routing Slip engine).
-*   **Databases (OLTP):** `PostgreSQL` (Isolated databases for each service) + `Redis` (Distributed Locks via RedLock.net & Idempotency Storage).
-*   **Data Pipelines & Streaming (CDC):** `Debezium CDC` (Streaming WAL-logs to Kafka) for decoupled data synchronization.
-*   **Analytics & DWH (OLAP):** `ClickHouse` (Pre-calculated OLAP Cubes via `Materialized Views` & `SummingMergeTree`) + `Metabase` for real-time dashboards.
-*   **Observability:** `OpenTelemetry` + `Prometheus` + `Grafana` + `Jaeger` (Distributed Tracing across all microservices).
+*   **Runtime:** `.NET 10`, C# 13.
+*   **API Layer:** `YARP` (Yet Another Reverse Proxy) as a pure HTTP gateway + `ASP.NET Core` Web API with `Asp.Versioning` and `Scalar` interactive API docs.
+*   **Message Broker & Async Transport:** `Apache Kafka` + `MassTransit` (Kafka Rider, Saga State Machine, Courier Routing Slip, EF Core Transactional Outbox/Inbox).
+*   **Databases (OLTP):** `PostgreSQL` (isolated database per service) + `Redis` (distributed locks via `RedLock.net`).
+*   **Reliability:** Declarative compliance rules via `RulesEngine` (JSON-configured, hot-swappable without code changes).
+*   **Data Pipelines & Streaming (CDC):** `Debezium` (Kafka Connect source connector) + the official ClickHouse Kafka Connect Sink connector.
+*   **Analytics & DWH (OLAP):** `ClickHouse` (`ReplacingMergeTree` tables + a flat `transaction_cube` view) + `Metabase` for dashboards.
+*   **Observability:** `OpenTelemetry` (traces + metrics) + `Prometheus` + `Grafana` + `Jaeger` (distributed tracing) + `Loki`/`Serilog` (centralized structured logs, trace-correlated).
+*   **Orchestration & Infrastructure:** `Docker Compose` for local development; `Kubernetes` (Kind/K3s) + `Helm` as an additional, fully equivalent deployment path.
+*   **Testing:** `xUnit`, `FluentAssertions`, `NSubstitute`, `Testcontainers` (Postgres, Redis, Kafka, ClickHouse), `GitHub Actions` CI.
 
 ---
 
-## ⚙️ Asynchronous Sagas & Routing Slips Design
+## ⚙️ Distributed Saga & Routing Slip Design
 
-The system implements the **Saga Orchestration** pattern using **MassTransit Courier**. Transactions are executed as an immutable series of activities forwarded through dedicated Kafka topics.
+The system implements the **Saga Orchestration** pattern using **MassTransit**. A transaction is executed as a
+sequence of commands/events over dedicated Kafka topics, coordinated by a persisted state machine.
 
-### The Financial Transfer Saga Steps:
-1.  **`HoldMoneyActivity`** (`Account Balance Service`): Appends an immutable negative delta hold entry into the event-sourced journal stream log.
-    - *Compensate:* Appends a positive neutralizing cancellation entry to instantly restore disposable capacity limits ( JournalEntryType.Cancelled ).
-2.  **`ComplianceCheckActivity`** (`Compliance Service`): Evaluates transaction limits and risk levels using declarative `RulesEngine` via a local JSON config.
-    *   *Compensate:* No-op (logs compliance security alert).
-3.  **`CommitLedgerActivity`** (`Core Ledger Service`): Writes the immutable audit trail record into the core database.
+### The financial transfer saga:
+1.  **Hold** (`AccountBalance.Service`): appends an immutable negative-delta hold entry to the event-sourced journal, guarded by a Redis distributed lock on the source account.
+    - *Compensate:* appends a positive neutralizing entry, restoring available capacity.
+2.  **Compliance Check** (`Compliance.Service`): evaluates the transaction against declarative JSON rules via `RulesEngine`.
+    - *Compensate (on rejection):* triggers release of the balance hold.
+3.  **Ledger Commit** (`CoreLedger.Service`): executes a local Courier Routing Slip — writes the audit trail, updates the Redis read cache, and publishes the committal notification — with automatic technical rollback across all three steps if a late activity fails.
+4.  **Confirm** (`AccountBalance.Service`): finalizes the double-entry journal confirmation.
+    - *Compensate (on failure):* triggers release of the balance hold.
 
----
-
-## 📊 Real-Time Analytics & Data Masking (OLAP / DWH)
-
-To prevent heavy analytical queries from locking the production transactional databases, the project demonstrates advanced **OLAP Data Warehousing**:
-*   **Zero-Overhead ETL:** `Debezium` captures raw data changes directly from PostgreSQL WAL logs asynchronously, putting zero CPU load on OLTP instances compared to cron-based batching.
-*   **Modern ROLAP Cubes:** `ClickHouse` aggregates raw event streams from different microservice schemas on the fly into flat, high-performance analytical tables using `Materialized Views`.
-*   **Data Anonymization (Prod-to-Test):** A data pipeline masks sensitive production data (names, balances, contacts) deterministically using salted hashes, creating a safe, compliance-friendly copy for the `PostgreSQL Test DB`.
+Every consumer is idempotent under Kafka's at-least-once redelivery, and the orchestrator's EF Core Transactional
+Outbox/Inbox guarantees that a broker outage mid-saga rolls back the state transition atomically rather than
+leaving a partially-advanced instance.
 
 ---
 
-## 🌋 Chaos Engineering & Resiliency Test Cases
-
-The primary technical challenge is to simulate severe infrastructure outages in a Kubernetes cluster and observe how the system preserves data consistency.
-
-### Tested Scenarios:
-*   **Pod Eviction & Failover:** Abruptly deleting microservice pods using `kubectl` mid-transaction. Testing how `Polly` policies handle transient network blips and how Kafka manages consumer group rebalancing.
-*   **Split-Brain & Distributed Lock Break:** Injecting network latency between services and Redis. Validating how PostgreSQL `UNIQUE CONSTRAINTS` act as the ultimate line of defense against duplicate saga executions (**Exactly-Once delivery**).
-*   **Saga Compensation Verification:** Artificially triggering a validation failure on Step 2 (`Compliance Service`) and verifying that MassTransit automatically rolls back the balance in Step 1 without data corruption.
-
----
-
-## ⚙️ Infrastructure & Local Environment Setup
-
-### 1. Database Initialization
-Ensure the centralized PostgreSQL container is fully initialized. The baseline schema footprints are established inside the logical partitions within the `integration-bus-db` container container instance.
-
-### 2. Manual Apache Kafka Topics Provisioning
-To align with high-performance production constraints and maintain boundary safety, automatic topic creation is disabled on the broker. You must provision the following required topics manually before spinning up the backend services.
-
-Open **Kafka UI** at `http://localhost:8080`, navigate to the **Topics** section, click **Add a Topic**, and create the following entities utilizing a baseline layout (1 Partition, Replication Factor 1):
-
-* `saga-transaction-start` — Ingests initialization trigger commands dispatched from the API gateway layer to bootstrap the orchestration state machine lifecycle.
-* `account-balance-hold` — Dispatched by the saga orchestrator to request asset locks and evaluate disposable capacity limits inside the event-sourced Balance context.
-* `account-balance-hold-passed` — Callback telemetry event signaling that the asset hold allocation was successfully verified and appended to the ledger journal stream.
-* `account-balance-hold-failed` — Callback event signaling validation stoppage, insufficient funds, or technical bounds violations encountered during the asset hold sequence.
-* `account-balance-confirm` — Command emitted by the orchestrator directing the Accounting domain to execute double-entry ledger updates and permanently finalize the frozen balance.
-* `account-balance-confirm-passed` — Success event signaling that the double-entry confirmation logs were atomically applied across both counterparties.
-* `account-balance-confirm-failed` — Critical breakdown event indicating that concurrency anomalies or storage failures stopped the final double-entry bookkeeping step.
-* `compliance-limits-check` — Dispatched by the orchestrator to trigger asynchronous regulatory velocity checks and fraud risk profile evaluations.
-* `core-ledger-record-write` — Dispatched to commit the absolute, unified transaction audit trail footprint into the centralized financial ledger database.
-
----
-
-## 🚀 How to Run Locally
+## 🚀 Running Locally
 
 ### Prerequisites
-* Docker Desktop / Rancher Desktop
-* Kubernetes cluster enabled (`kubectl`)
-* Helm installed
+* Docker Desktop (or an equivalent Docker Engine + Compose installation).
 
-### Installation Steps
-1. Clone the repository.
-2. Deploy the infrastructure stack inside Kubernetes:
-   ```bash
-   helm install integration-infra ./deploy/k8s/charts/infra
-3. Run load tests via `k6` to monitor system performance and view real-time metrics in Grafana and Metabase dashboards:
-   ```bash
-   k6 run ./tests/load-test.js
-   ```
+### Docker Compose (primary path)
+```bash
+git clone <this-repository>
+cd integration-bus
+docker compose up -d --build
+```
+Follow [`docs/business-logic/validation-guide.md`](docs/business-logic/validation-guide.md) for a full black-box
+walkthrough (seed accounts → run a transaction → verify the saga, observability stack, and analytics pipeline).
+
+### Kubernetes (additional, fully equivalent path)
+```bash
+kind create cluster --config deploy/k8s/kind/kind-cluster.yaml
+docker compose build
+helm install integration-bus deploy/k8s/charts/integration-bus -n integration-bus --create-namespace --timeout 10m
+```
+See [`docs/k8s-deployment/README.md`](docs/k8s-deployment/README.md) for the full chart walkthrough, or
+[`docs/k8s-deployment/GETTING-STARTED.md`](docs/k8s-deployment/GETTING-STARTED.md) if you have never used Kubernetes before.
 
 ### 🛠️ Development
-Before making any changes or submitting Pull Requests, please review our [Commit Guidelines](CONTRIBUTING.md).
+Before making any changes or submitting Pull Requests, please review [`CONTRIBUTING.md`](CONTRIBUTING.md).

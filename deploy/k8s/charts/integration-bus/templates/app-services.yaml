@@ -1,0 +1,81 @@
+{{- range $name, $svc := .Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: integration-bus-{{ $name }}
+  labels:
+    app: integration-bus-{{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app: integration-bus-{{ $name }}
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z integration-bus-db 5432; do echo waiting for postgres; sleep 2; done"]
+        - name: wait-for-kafka
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z integration-bus-kafka 9094; do echo waiting for kafka; sleep 2; done"]
+      containers:
+        - name: {{ $name }}
+          image: {{ $svc.image }}
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          resources:
+            {{- $.Values.appResources | toYaml | nindent 12 }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: integration-bus-secrets
+                  key: redis-password
+            - name: MASKING_HMAC_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: integration-bus-secrets
+                  key: masking-hmac-salt
+            {{- range $.Values.commonEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range $svc.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-{{ $name }}
+  labels:
+    app: integration-bus-{{ $name }}
+spec:
+  type: NodePort
+  selector:
+    app: integration-bus-{{ $name }}
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      nodePort: {{ $svc.nodePort }}
+---
+{{- end }}

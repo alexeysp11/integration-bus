@@ -9,7 +9,7 @@ namespace IntegrationBus.SagaOrchestrator.Service.Activities;
 /// <summary>
 /// Handles the outbound Kafka message dispatch to the Compliance service via constructor dependency injection.
 /// </summary>
-public sealed class CheckComplianceLimitsActivity(ITopicProducer<CheckComplianceLimits> producer)
+public sealed class CheckComplianceLimitsActivity(ILogger<CheckComplianceLimitsActivity> logger, ITopicProducer<CheckComplianceLimits> producer)
     : IStateMachineActivity<TransactionSagaInstance, HoldAccountBalancePassed>
 {
     public void Probe(ProbeContext context) => context.CreateScope("check-compliance-limits-activity");
@@ -20,6 +20,10 @@ public sealed class CheckComplianceLimitsActivity(ITopicProducer<CheckCompliance
         BehaviorContext<TransactionSagaInstance, HoldAccountBalancePassed> context,
         IBehavior<TransactionSagaInstance, HoldAccountBalancePassed> next)
     {
+        logger.LogInformation(
+            "Saga step 2/4 | Account balance hold confirmed, dispatching CheckComplianceLimits for Tx: {TransactionId}",
+            context.Saga.CorrelationId);
+
         // Produce the security limits verification command directly into the designated Apache Kafka topic partition
         await producer.Produce(new CheckComplianceLimits
         {

@@ -65,8 +65,8 @@ builder.Services.AddMassTransit(x =>
     x.AddRider(rider =>
     {
         // Explicitly register the outbound producer footprint for the startup trigger command
-        rider.AddProducer<StartTransactionSaga>(KafkaTopics.SagaTransactionStart);
-        rider.AddProducer<TopUpAccountBalance>(KafkaTopics.AccountBalanceTopUp);
+        rider.AddPartitionKeyedProducer<StartTransactionSaga>(KafkaTopics.SagaTransactionStart, message => message.TransactionId);
+        rider.AddPartitionKeyedProducer<TopUpAccountBalance>(KafkaTopics.AccountBalanceTopUp, message => message.AccountId);
         rider.AddProducer<SeedAccountDatabaseBulkData>(KafkaTopics.AccountDatabaseSeed);
 
         rider.UsingKafka((context, k) =>

@@ -4,6 +4,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Commands;
 using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.AccountBalance.Service.Entities;
 using IntegrationBus.AccountBalance.Service.Enums;
+using IntegrationBus.AccountBalance.Service.Providers;
 using IntegrationBus.Contracts.Enums;
 using Microsoft.EntityFrameworkCore;
 using MassTransit;
@@ -76,6 +77,10 @@ public sealed class TopUpAccountBalanceConsumer(
 
         try
         {
+            // Serialize with every other writer of this account and with duplicate deliveries of this transaction
+            await AccountAdvisoryLock.AcquireTransactionAsync(connection, transaction, message.TransactionId, context.CancellationToken);
+            await AccountAdvisoryLock.AcquireAccountsAsync(connection, transaction, [message.AccountId], context.CancellationToken);
+
             // Idempotency guard: a redelivered top-up for a TransactionId that already posted its deposit entry
             // is replayed without crediting the account a second time
             bool alreadyDeposited = await connection.ExecuteScalarAsync<int?>(

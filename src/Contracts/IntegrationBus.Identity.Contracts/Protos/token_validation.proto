@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option csharp_namespace = "IntegrationBus.Identity.Contracts";
+
+package integrationbus.identity;
+
+// Validates bearer tokens issued by the Keycloak identity provider.
+// Design and failure semantics: docs/api-gateway/README.md
+service TokenValidation {
+  // Verifies the signature, issuer, lifetime and audience of a bearer token.
+  rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message ValidateTokenRequest {
+  // The raw JWT without the "Bearer " scheme prefix.
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  // True when the token is authentic, unexpired and addressed to this platform.
+  bool is_valid = 1;
+
+  // The "sub" claim of a valid token; empty otherwise.
+  string subject = 2;
+
+  // Human-readable rejection reason; empty for a valid token.
+  string failure_reason = 3;
+
+  // Realm roles carried by a valid token.
+  repeated string roles = 4;
+}

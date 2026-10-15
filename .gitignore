@@ -36,3 +36,6 @@ Thumbs.db
 .idea/
 appsettings.Local.json
 *.usersecrets
+
+# Local chaos run artifacts (account pools, k6 summaries, reconciliation exports)
+tests/chaos/work/

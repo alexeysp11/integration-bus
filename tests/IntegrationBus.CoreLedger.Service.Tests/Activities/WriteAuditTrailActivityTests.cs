@@ -138,4 +138,61 @@ public sealed class WriteAuditTrailActivityTests : IAsyncLifetime, IDisposable
         actualResult.Should().BeSameAs(expectedResult);
         context.Received(1).Compensated();
     }
+
+    [Fact]
+    public async Task Execute_WhenTheSameTransactionIsDeliveredTwice_ShouldKeepExactlyOneLedgerEntry()
+    {
+        Guid transactionId = Guid.NewGuid();
+        WriteAuditTrailActivity activity = new(NullLogger<WriteAuditTrailActivity>.Instance, _dbContext);
+
+        for (int delivery = 0; delivery < 2; delivery++)
+        {
+            ExecuteContext<WriteAuditTrailArguments> context = Substitute.For<ExecuteContext<WriteAuditTrailArguments>>();
+            context.Arguments.Returns(new WriteAuditTrailArguments
+            {
+                TransactionId = transactionId,
+                SourceAccountId = Guid.NewGuid(),
+                TargetAccountId = Guid.NewGuid(),
+                Amount = 75m,
+                Currency = (int)IntegrationBus.Contracts.Enums.Currency.USD
+            });
+            context.CancellationToken.Returns(CancellationToken.None);
+
+            await activity.Execute(context);
+        }
+
+        await using NpgsqlConnection connection = new(_postgres.GetConnectionString());
+        await connection.OpenAsync();
+        int rowCount = await connection.ExecuteScalarAsync<int>(
+            $"""SELECT COUNT(*) FROM "{nameof(LedgerDbContext.LedgerEntries)}" WHERE "{nameof(LedgerEntryEntity.TransactionId)}" = @TransactionId""",
+            new { TransactionId = transactionId });
+
+        rowCount.Should().Be(1, "because a redelivered WriteLedgerRecord command must not duplicate the financial record");
+    }
+
+    [Fact]
+    public async Task Compensate_ShouldRemoveTheLedgerEntryOfTheRolledBackTransaction()
+    {
+        Guid transactionId = Guid.NewGuid();
+        WriteAuditTrailActivity activity = new(NullLogger<WriteAuditTrailActivity>.Instance, _dbContext);
+
+        ExecuteContext<WriteAuditTrailArguments> executeContext = Substitute.For<ExecuteContext<WriteAuditTrailArguments>>();
+        executeContext.Arguments.Returns(new WriteAuditTrailArguments
+        {
+            TransactionId = transactionId,
+            SourceAccountId = Guid.NewGuid(),
+            TargetAccountId = Guid.NewGuid(),
+            Amount = 30m,
+            Currency = (int)IntegrationBus.Contracts.Enums.Currency.USD
+        });
+        executeContext.CancellationToken.Returns(CancellationToken.None);
+        await activity.Execute(executeContext);
+
+        CompensateContext<WriteAuditTrailLog> compensateContext = Substitute.For<CompensateContext<WriteAuditTrailLog>>();
+        compensateContext.Log.Returns(new WriteAuditTrailLog { TransactionId = transactionId, LedgerEntryId = 1 });
+        await activity.Compensate(compensateContext);
+
+        LedgerEntryEntity? remaining = await FindEntryAsync(transactionId);
+        remaining.Should().BeNull("because a rolled back routing slip must leave no ledger record for a failed transaction");
+    }
 }

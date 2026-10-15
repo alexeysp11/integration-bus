@@ -50,10 +50,11 @@ Checking the applications' health endpoints from the host:
 ```bash
 curl http://localhost:5038/health   # Gateway.Api
 curl http://localhost:5201/health   # Processing.Api
-curl http://localhost:6001/health   # Saga Orchestrator
-curl http://localhost:6002/health   # Account Balance
-curl http://localhost:6003/health   # Compliance
-curl http://localhost:6004/health   # Core Ledger
+for port in $(seq 6010 6049); do   # worker replicas: orchestrator 6010-19, balance 6020-29, compliance 6030-39, ledger 6040-49
+  code=$(curl -s -m 1 -o /dev/null -w "%{http_code}" "http://localhost:$port/health")
+  [ "$code" != "000" ] && echo "replica on port $port: $code"
+done
+curl http://localhost:6006/health   # Identity.Service
 ```
 
 Each should return `Healthy` with `200 OK`. If one returns `Unhealthy`/`503`, it means the corresponding

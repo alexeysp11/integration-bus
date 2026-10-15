@@ -26,10 +26,11 @@ docker compose ps
 ```bash
 curl -s -o /dev/null -w "Gateway: %{http_code}\n"            http://localhost:5038/health
 curl -s -o /dev/null -w "Processing.Api: %{http_code}\n"     http://localhost:5201/health
-curl -s -o /dev/null -w "SagaOrchestrator: %{http_code}\n"   http://localhost:6001/health
-curl -s -o /dev/null -w "AccountBalance: %{http_code}\n"     http://localhost:6002/health
-curl -s -o /dev/null -w "Compliance: %{http_code}\n"         http://localhost:6003/health
-curl -s -o /dev/null -w "CoreLedger: %{http_code}\n"         http://localhost:6004/health
+for port in $(seq 6010 6049); do
+  code=$(curl -s -m 1 -o /dev/null -w "%{http_code}" "http://localhost:$port/health")
+  [ "$code" != "000" ] && echo "worker replica on port $port: $code"
+done
+curl -s -o /dev/null -w "Identity: %{http_code}\n"           http://localhost:6006/health
 ```
 
 Если какой-то сервис ещё `Unhealthy` — подождите 10–20 секунд (миграции БД и провижининг Kafka-топиков на первом
@@ -44,11 +45,21 @@ curl -s "http://localhost:8083/connectors?expand=status"
 
 ## Шаг 2. Подготовка тестовых счетов
 
+Каждый запрос через шлюз требует bearer-токен Keycloak
+(см. [`docs/api-gateway/README.ru.md`](../api-gateway/README.ru.md)). Сначала получите его:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/integration-bus/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=integration-bus-client \
+  -d client_secret=integration-bus-client-secret | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+```
+
 В системе нет отдельного публичного эндпоинта «создать один счёт» — счета создаются только через bulk-seed. Создадим
 5 тестовых счетов в USD и возьмём два реальных `Id` из базы:
 
 ```bash
 curl -s -X POST http://localhost:5038/api/v1/accounts/seed \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"count": 5, "currency": 1}'
 # -> 202 Accepted
@@ -64,6 +75,7 @@ docker exec integration-bus-db psql -U postgres -d accounting_db -t -c \
 
 ```bash
 curl -s -X POST "http://localhost:5038/api/v1/accounts/$SOURCE_ID/topup" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"amount": 1000.00, "currency": 1}'
 # -> 202 Accepted {"message":"Top-up request accepted...","trackingTransactionId":"..."}
@@ -80,6 +92,7 @@ sleep 2
 
 ```bash
 curl -s -X POST http://localhost:5038/api/v1/ledger/transaction \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"sourceAccountId\": \"$SOURCE_ID\",

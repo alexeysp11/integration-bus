@@ -23,6 +23,7 @@ public sealed class LedgerRoutingSlipEventConsumerTests
 
         return new LedgerRoutingSlipEventConsumer(
             NullLogger<LedgerRoutingSlipEventConsumer>.Instance,
+            new LedgerRoutingSlipCompletionRegistry(),
             passedProducer,
             failedProducer);
     }

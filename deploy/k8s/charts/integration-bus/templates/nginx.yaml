@@ -1,0 +1,90 @@
+{{- /* Keep the generated certificate stable across upgrades: reuse the existing Secret when present */}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace "integration-bus-nginx-tls" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: integration-bus-nginx-tls
+type: kubernetes.io/tls
+data:
+  {{- if $existing }}
+  tls.crt: {{ index $existing.data "tls.crt" }}
+  tls.key: {{ index $existing.data "tls.key" }}
+  {{- else }}
+  {{- $cert := genSelfSignedCert "localhost" (list "127.0.0.1") (list "localhost") 365 }}
+  tls.crt: {{ $cert.Cert | b64enc }}
+  tls.key: {{ $cert.Key | b64enc }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: integration-bus-nginx-config
+data:
+  nginx.conf: |-
+{{ .Files.Get "files/nginx/nginx.conf" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: integration-bus-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: integration-bus-nginx
+  template:
+    metadata:
+      labels:
+        app: integration-bus-nginx
+      annotations:
+        checksum/config: {{ .Files.Get "files/nginx/nginx.conf" | sha256sum }}
+    spec:
+      containers:
+        - name: nginx
+          image: {{ .Values.nginx.image }}
+          ports:
+            - containerPort: 8080
+            - containerPort: 8443
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: tls
+              mountPath: /etc/nginx/certs
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 8080
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: integration-bus-nginx-config
+        - name: tls
+          secret:
+            secretName: integration-bus-nginx-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-nginx
+spec:
+  type: NodePort
+  selector:
+    app: integration-bus-nginx
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+      nodePort: {{ .Values.nginx.httpsNodePort }}
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: {{ .Values.nginx.httpNodePort }}

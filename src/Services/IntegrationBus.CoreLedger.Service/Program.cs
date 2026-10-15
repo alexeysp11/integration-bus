@@ -39,6 +39,8 @@ try
     string redisConnectionString = builder.Configuration["Redis:ConnectionString"]
         ?? throw new InvalidOperationException("Redis connection string is not specified");
 
+    builder.Services.AddSingleton<LedgerRoutingSlipCompletionRegistry>();
+
     builder.Services.AddSingleton<IConnectionMultiplexer>(
         _ => ConnectionMultiplexer.Connect(redisConnectionString));
 
@@ -78,8 +80,8 @@ try
             rider.AddConsumer<WriteLedgerRecordConsumer>();
 
             // Declare the final response producer so the slip can notify the Saga Orchestrator over Kafka
-            rider.AddProducer<WriteLedgerRecordPassed>(KafkaTopics.CoreLedgerRecordWritePassed);
-            rider.AddProducer<WriteLedgerRecordFailed>(KafkaTopics.CoreLedgerRecordWriteFailed);
+            rider.AddPartitionKeyedProducer<WriteLedgerRecordPassed>(KafkaTopics.CoreLedgerRecordWritePassed, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<WriteLedgerRecordFailed>(KafkaTopics.CoreLedgerRecordWriteFailed, message => message.TransactionId);
 
             rider.UsingKafka((context, k) =>
             {
@@ -94,6 +96,8 @@ try
                             KafkaTopics.CoreLedgerRecordWrite,
                             context.GetRequiredService<IHmacMaskingService>(),
                             context.GetRequiredService<ISecurityTopicPublisher>()));
+                        // A slip that outlives its timeout is retried; every slip activity is idempotent per TransactionId
+                        e.UseMessageRetry(retry => retry.Interval(3, TimeSpan.FromSeconds(2)));
                         e.ConfigureConsumer<WriteLedgerRecordConsumer>(context);
                     });
             });

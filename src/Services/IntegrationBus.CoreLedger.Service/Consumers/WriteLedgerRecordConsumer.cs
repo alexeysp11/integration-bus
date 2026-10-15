@@ -11,8 +11,11 @@ namespace IntegrationBus.CoreLedger.Service.Consumers;
 /// </summary>
 public sealed class WriteLedgerRecordConsumer(
     ILogger<WriteLedgerRecordConsumer> logger,
+    LedgerRoutingSlipCompletionRegistry completionRegistry,
     ITopicProducer<WriteLedgerRecordFailed> failedProducer) : IConsumer<WriteLedgerRecord>
 {
+    private static readonly TimeSpan RoutingSlipTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// Processes the incoming Kafka record by building and executing an atomic stateless local routing slip in memory.
     /// </summary>
@@ -75,14 +78,27 @@ public sealed class WriteLedgerRecordConsumer(
 
             // Compile and execute the technical routing slip sub-transaction sequence immediately inside local memory boundary
             RoutingSlip routingSlip = builder.Build();
+            // Track the slip so the Kafka offset stays uncommitted until the slip finished and its outcome event was published;
+            // a replica killed mid-slip therefore causes redelivery to a healthy replica instead of a silently lost step
+            Task slipFinished = completionRegistry.Register(trackingId);
             await context.Execute(routingSlip);
+
+            try
+            {
+                await slipFinished.WaitAsync(RoutingSlipTimeout, context.CancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                completionRegistry.Forget(trackingId);
+                throw;
+            }
 
             logger.LogInformation(
                 "Successfully dispatched local infrastructure routing slip for TransactionId: {TransactionId}. TrackingId allocated: {TrackingId}",
                 context.Message.TransactionId,
                 trackingId);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not TimeoutException)
         {
             logger.LogError(ex, "Routing Slip execution engine crashed on startup for TransactionId: {TransactionId}", context.Message.TransactionId);
             await failedProducer.Produce(new WriteLedgerRecordFailed

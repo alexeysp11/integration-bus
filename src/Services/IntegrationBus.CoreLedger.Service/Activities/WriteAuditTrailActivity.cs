@@ -19,7 +19,12 @@ public sealed class WriteAuditTrailActivity(ILogger<WriteAuditTrailActivity> log
             ""{nameof(LedgerEntryEntity.TransactionId)}"",
             ""{nameof(LedgerEntryEntity.Amount)}"",
             ""{nameof(LedgerEntryEntity.CreatedAt)}"")
-        VALUES (@TransactionId, @Amount, @CreatedAt);";
+        VALUES (@TransactionId, @Amount, @CreatedAt)
+        ON CONFLICT (""{nameof(LedgerEntryEntity.TransactionId)}"") DO NOTHING;";
+
+    private const string DeleteLedgerEntrySql = $@"
+        DELETE FROM ""{nameof(LedgerDbContext.LedgerEntries)}""
+        WHERE ""{nameof(LedgerEntryEntity.TransactionId)}"" = @TransactionId;";
     
     /// <summary>
     /// Executes the persistent transactional database record allocation simulation.
@@ -64,13 +69,16 @@ public sealed class WriteAuditTrailActivity(ILogger<WriteAuditTrailActivity> log
     /// <summary>
     /// Compensates the primary transaction entry if a downstream activity within the routing slip lifecycle fails.
     /// </summary>
-    public Task<CompensationResult> Compensate(CompensateContext<WriteAuditTrailLog> context)
+    public async Task<CompensationResult> Compensate(CompensateContext<WriteAuditTrailLog> context)
     {
         logger.LogWarning(
-            "Courier Compensation Triggered | Database: ledger | Executing Rollback SQL: UPDATE LedgerEntries SET Status = 'Compensated' WHERE EntryId = {EntryId} AND TransactionId = {TransactionId}",
-            context.Log.LedgerEntryId,
+            "Courier Compensation Triggered | Database: ledger | Executing Rollback SQL: DELETE FROM LedgerEntries WHERE TransactionId = {TransactionId}",
             context.Log.TransactionId);
 
-        return Task.FromResult(context.Compensated());
+        // Remove the entry so a transaction whose routing slip rolled back leaves no ledger record behind
+        DbConnection connection = dbContext.Database.GetDbConnection();
+        await connection.ExecuteAsync(DeleteLedgerEntrySql, new { context.Log.TransactionId });
+
+        return context.Compensated();
     }
 }

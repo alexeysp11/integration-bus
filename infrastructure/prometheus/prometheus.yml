@@ -12,22 +12,42 @@ scrape_configs:
     static_configs:
       - targets: ['integration-bus-processing-api:5201']
 
+  # The four worker services run as multiple replicas (see "deploy.replicas" in docker-compose.yml). Docker's
+  # embedded DNS answers a service-name lookup with one A record per replica, so DNS service discovery scrapes
+  # every replica individually instead of whichever single replica a static target happens to resolve to.
   - job_name: 'saga-orchestrator'
     metrics_path: '/metrics'
-    static_configs:
-      - targets: ['integration-bus-saga-orchestrator-service:6001']
+    dns_sd_configs:
+      - names: ['integration-bus-saga-orchestrator-service']
+        type: 'A'
+        port: 6001
+        refresh_interval: 10s
 
   - job_name: 'account-balance'
     metrics_path: '/metrics'
-    static_configs:
-      - targets: ['integration-bus-account-balance-service:6002']
+    dns_sd_configs:
+      - names: ['integration-bus-account-balance-service']
+        type: 'A'
+        port: 6002
+        refresh_interval: 10s
 
   - job_name: 'compliance'
     metrics_path: '/metrics'
-    static_configs:
-      - targets: ['integration-bus-compliance-service:6003']
+    dns_sd_configs:
+      - names: ['integration-bus-compliance-service']
+        type: 'A'
+        port: 6003
+        refresh_interval: 10s
 
   - job_name: 'core-ledger'
     metrics_path: '/metrics'
+    dns_sd_configs:
+      - names: ['integration-bus-core-ledger-service']
+        type: 'A'
+        port: 6004
+        refresh_interval: 10s
+
+  - job_name: 'identity'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['integration-bus-core-ledger-service:6004']
+      - targets: ['integration-bus-identity-service:6006']

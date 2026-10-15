@@ -49,8 +49,8 @@ try
         {
             rider.AddConsumer<CheckComplianceLimitsConsumer>();
 
-            rider.AddProducer<CheckComplianceLimitsPassed>(KafkaTopics.ComplianceLimitsCheckPassed);
-            rider.AddProducer<CheckComplianceLimitsFailed>(KafkaTopics.ComplianceLimitsCheckFailed);
+            rider.AddPartitionKeyedProducer<CheckComplianceLimitsPassed>(KafkaTopics.ComplianceLimitsCheckPassed, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<CheckComplianceLimitsFailed>(KafkaTopics.ComplianceLimitsCheckFailed, message => message.TransactionId);
 
             rider.UsingKafka((context, k) =>
             {

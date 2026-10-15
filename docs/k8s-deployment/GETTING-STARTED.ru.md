@@ -173,6 +173,7 @@ for img in \
   integration-bus-integration-bus-account-balance-service \
   integration-bus-integration-bus-compliance-service \
   integration-bus-integration-bus-core-ledger-service \
+  integration-bus-integration-bus-identity-service \
   integration-bus-integration-bus-kafka-connect \
 ; do
   kind load docker-image "$img:latest" --name integration-bus

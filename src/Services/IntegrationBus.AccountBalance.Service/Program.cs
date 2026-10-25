@@ -84,21 +84,21 @@ try
             rider.AddConsumer<ConfirmAccountBalanceConsumer>();
             rider.AddConsumer<ReleaseAccountBalanceConsumer>();
 
-            rider.AddProducer<HoldAccountBalancePassed>(KafkaTopics.AccountBalanceHoldPassed);
-            rider.AddProducer<HoldAccountBalanceFailed>(KafkaTopics.AccountBalanceHoldFailed);
+            rider.AddPartitionKeyedProducer<HoldAccountBalancePassed>(KafkaTopics.AccountBalanceHoldPassed, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<HoldAccountBalanceFailed>(KafkaTopics.AccountBalanceHoldFailed, message => message.TransactionId);
 
-            rider.AddProducer<TopUpAccountBalancePassed>(KafkaTopics.AccountBalanceTopUpPassed);
-            rider.AddProducer<TopUpAccountBalanceFailed>(KafkaTopics.AccountBalanceTopUpFailed);
+            rider.AddPartitionKeyedProducer<TopUpAccountBalancePassed>(KafkaTopics.AccountBalanceTopUpPassed, message => message.AccountId);
+            rider.AddPartitionKeyedProducer<TopUpAccountBalanceFailed>(KafkaTopics.AccountBalanceTopUpFailed, message => message.AccountId);
 
             rider.AddProducer<SeedAccountDatabaseBulkDataPassed>(KafkaTopics.AccountDatabaseSeedPassed);
             rider.AddProducer<SeedAccountDatabaseBulkDataFailed>(KafkaTopics.AccountDatabaseSeedFailed);
 
-            rider.AddProducer<ReleaseAccountBalancePassed>(KafkaTopics.AccountBalanceReleasePassed);
-            rider.AddProducer<ReleaseAccountBalanceSkipped>(KafkaTopics.AccountBalanceReleaseSkipped);
-            rider.AddProducer<ReleaseAccountBalanceFailed>(KafkaTopics.AccountBalanceReleaseFailed);
+            rider.AddPartitionKeyedProducer<ReleaseAccountBalancePassed>(KafkaTopics.AccountBalanceReleasePassed, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<ReleaseAccountBalanceSkipped>(KafkaTopics.AccountBalanceReleaseSkipped, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<ReleaseAccountBalanceFailed>(KafkaTopics.AccountBalanceReleaseFailed, message => message.TransactionId);
 
-            rider.AddProducer<ConfirmAccountBalancePassed>(KafkaTopics.AccountBalanceConfirmPassed);
-            rider.AddProducer<ConfirmAccountBalanceFailed>(KafkaTopics.AccountBalanceConfirmFailed);
+            rider.AddPartitionKeyedProducer<ConfirmAccountBalancePassed>(KafkaTopics.AccountBalanceConfirmPassed, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<ConfirmAccountBalanceFailed>(KafkaTopics.AccountBalanceConfirmFailed, message => message.TransactionId);
 
             rider.UsingKafka((context, k) =>
             {

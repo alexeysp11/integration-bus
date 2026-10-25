@@ -5,6 +5,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.AccountBalance.Service.Entities;
 using IntegrationBus.AccountBalance.Service.Enums;
+using IntegrationBus.AccountBalance.Service.Providers;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -71,6 +72,9 @@ public sealed class ConfirmAccountBalanceConsumer(
 
         try
         {
+            // Serialize duplicate deliveries of this transaction before the idempotency check
+            await AccountAdvisoryLock.AcquireTransactionAsync(connection, transaction, message.TransactionId, context.CancellationToken);
+
             // Idempotency guard: a redelivered confirmation for a TransactionId that already posted its double-entry
             // records is replayed without crediting the target account a second time
             bool alreadyConfirmed = await connection.ExecuteScalarAsync<int?>(
@@ -103,6 +107,9 @@ public sealed class ConfirmAccountBalanceConsumer(
             Guid sourceAccountId = holdEntry.SourceAccountId;
             Guid targetAccountId = holdEntry.TargetAccountId
                 ?? throw new InvalidOperationException($"Hold event state corrupted. Target counterparty account context missing for Tx: {message.TransactionId}");
+
+            // Hold and target journal streams are appended below; lock both accounts in a stable order
+            await AccountAdvisoryLock.AcquireAccountsAsync(connection, transaction, [sourceAccountId, targetAccountId], context.CancellationToken);
 
             // Reconstruct absolute positive volume size from the negative hold delta
             decimal absoluteTransferAmount = Math.Abs(holdEntry.AmountDelta);

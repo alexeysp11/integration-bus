@@ -52,7 +52,7 @@ public sealed class OutboxResilienceTests : IAsyncLifetime
 
         // The one activity this test deliberately destabilizes: WriteLedgerRecord dispatch, standing in for
         // "Kafka was unreachable when the saga tried to kick off the Core Ledger step".
-        services.AddSingleton<FlakyTopicProducer<WriteLedgerRecord>>(_ => new FlakyTopicProducer<WriteLedgerRecord>(failFirstNCalls: 1));
+        services.AddSingleton(_ => new FlakyTopicProducer<WriteLedgerRecord>(failFirstNCalls: 1));
         services.AddSingleton<ITopicProducer<WriteLedgerRecord>>(sp => sp.GetRequiredService<FlakyTopicProducer<WriteLedgerRecord>>());
 
         services.AddMassTransitTestHarness(x =>

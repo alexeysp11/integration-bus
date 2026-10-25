@@ -138,7 +138,7 @@ spec:
                 account-balance-release account-balance-release-passed account-balance-release-failed account-balance-release-skipped \
                 account-balance-hold.security core-ledger-record-write.security \
               ; do
-                /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions 2 --replication-factor 1 --topic "$topic"
+                /opt/kafka/bin/kafka-topics.sh --create --bootstrap-server integration-bus-kafka:9094 --if-not-exists --partitions {{ .Values.kafka.topicPartitions }} --replication-factor 1 --topic "$topic"
               done
 
               echo "Infrastructure topic auto-provisioning pipeline completed successfully."

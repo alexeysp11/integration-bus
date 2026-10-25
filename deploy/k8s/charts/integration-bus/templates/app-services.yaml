@@ -6,7 +6,7 @@ metadata:
   labels:
     app: integration-bus-{{ $name }}
 spec:
-  replicas: 1
+  replicas: {{ $svc.replicas | default 1 }}
   selector:
     matchLabels:
       app: integration-bus-{{ $name }}
@@ -28,6 +28,9 @@ spec:
           imagePullPolicy: {{ $.Values.imagePullPolicy }}
           ports:
             - containerPort: {{ $svc.port }}
+            {{- range $svc.extraPorts }}
+            - containerPort: {{ .port }}
+            {{- end }}
           resources:
             {{- $.Values.appResources | toYaml | nindent 12 }}
           env:
@@ -36,6 +39,8 @@ spec:
                 secretKeyRef:
                   name: integration-bus-secrets
                   key: redis-password
+            - name: REDIS_ENDPOINT
+              value: {{ ternary "integration-bus-toxiproxy:6380" "integration-bus-redis:6379" $.Values.chaos.toxiproxy.enabled | quote }}
             - name: MASKING_HMAC_SALT
               valueFrom:
                 secretKeyRef:
@@ -74,8 +79,33 @@ spec:
   selector:
     app: integration-bus-{{ $name }}
   ports:
-    - port: {{ $svc.port }}
+    - name: http
+      port: {{ $svc.port }}
       targetPort: {{ $svc.port }}
       nodePort: {{ $svc.nodePort }}
+    {{- range $svc.extraPorts }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .port }}
+      {{- if .nodePort }}
+      nodePort: {{ .nodePort }}
+      {{- end }}
+    {{- end }}
+---
+# Headless companion Service: its DNS name resolves to every ready replica, which lets Prometheus scrape each pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-bus-{{ $name }}-pods
+  labels:
+    app: integration-bus-{{ $name }}
+spec:
+  clusterIP: None
+  selector:
+    app: integration-bus-{{ $name }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
 ---
 {{- end }}

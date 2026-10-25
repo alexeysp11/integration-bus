@@ -73,11 +73,11 @@ try
             // Bind saga consumers to listen to their respective Kafka topics
             rider.AddConsumersFromNamespaceContaining<TransactionSagaStateMachine>();
 
-            rider.AddProducer<HoldAccountBalance>(KafkaTopics.AccountBalanceHold);
-            rider.AddProducer<CheckComplianceLimits>(KafkaTopics.ComplianceLimitsCheck);
-            rider.AddProducer<ReleaseAccountBalance>(KafkaTopics.AccountBalanceRelease);
-            rider.AddProducer<WriteLedgerRecord>(KafkaTopics.CoreLedgerRecordWrite);
-            rider.AddProducer<ConfirmAccountBalance>(KafkaTopics.AccountBalanceConfirm);
+            rider.AddPartitionKeyedProducer<HoldAccountBalance>(KafkaTopics.AccountBalanceHold, message => message.AccountFromId);
+            rider.AddPartitionKeyedProducer<CheckComplianceLimits>(KafkaTopics.ComplianceLimitsCheck, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<ReleaseAccountBalance>(KafkaTopics.AccountBalanceRelease, message => message.AccountId);
+            rider.AddPartitionKeyedProducer<WriteLedgerRecord>(KafkaTopics.CoreLedgerRecordWrite, message => message.TransactionId);
+            rider.AddPartitionKeyedProducer<ConfirmAccountBalance>(KafkaTopics.AccountBalanceConfirm, message => message.TransactionId);
 
             rider.UsingKafka((context, k) =>
             {

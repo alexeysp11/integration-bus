@@ -16,11 +16,12 @@ observability stack, all strictly targeting **production-ready** engineering qua
 - [x] **Stage 3: Reliability & Integration Testing** — ✅ *Done* (distributed locks + rules engine, see [`docs/reliability/README.md`](docs/reliability/README.md))
 - [x] **Stage 4: Real-Time Analytics (DWH) & Masking** — ✅ *Done* (Debezium/ClickHouse/Metabase pipeline, see [`docs/data-analytics/README.md`](docs/data-analytics/README.md); infrastructure-level HMAC data masking, see [`docs/reliability/README.md`](docs/reliability/README.md))
 - [x] **Stage 5: Cloud-Native Migration (Kubernetes)** — ✅ *Done* (see [`docs/k8s-deployment/README.md`](docs/k8s-deployment/README.md))
-- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending* (strategy documented in [`docs/chaos-engineering/README.md`](docs/chaos-engineering/README.md), not yet executed)
-- [ ] **Stage 7: API Gateway Hardening (NGINX, Rate Limiting) & Identity (Keycloak OIDC)** — ⏳ *Pending* (planned, not yet implemented — see [`docs/roadmap.md`](docs/roadmap.md))
+- [ ] **Stage 6: High-Load Simulation & Chaos Engineering** — ⏳ *Pending live verification* (implemented: Kafka partition keys, worker replicas, k6 load and fault-injection harness with a consistency reconciliation; see [`docs/chaos-engineering/README.md`](docs/chaos-engineering/README.md), scenarios not yet executed)
+- [ ] **Stage 7: API Gateway Hardening (NGINX, Rate Limiting) & Identity (Keycloak OIDC)** — ⏳ *Pending live verification* (implemented: NGINX edge, Keycloak realm, gRPC token validation in the gateway; see [`docs/api-gateway/README.md`](docs/api-gateway/README.md))
 
 ### 🔗 Quick Links & Documentation
 *   🗺️ **[Project Evolution Roadmap](docs/roadmap.md)** — Detailed task breakdowns, Done criteria, and milestones.
+*   ▶️ **[Running and Testing Guide](docs/running-and-testing.md)** — Start the stack (Docker Compose or Kubernetes), run the automated tests, the identity/edge checks and the chaos scenarios.
 *   🚀 **[API Specifications & Verification Rules](docs/business-logic/api-specifications.md)** — HTTP contracts, JSON payload schemas, FluentValidation constraints, and manual testing procedures.
 *   🎯 **[Black-Box Validation Guide](docs/business-logic/validation-guide.md)** — End-to-end scenario proving the whole stack works: HTTP → Saga → Observability → Analytics.
 *   ☸️ **[Kubernetes Deployment](docs/k8s-deployment/README.md)** — Full stack as one Helm chart; see [`GETTING-STARTED.md`](docs/k8s-deployment/GETTING-STARTED.md) for a zero-Kubernetes-experience walkthrough.
@@ -104,6 +105,8 @@ message to the real consumer unchanged. See [`docs/reliability/README.md`](docs/
 
 *   **Runtime:** `.NET 10`, C# 13.
 *   **API Layer:** `YARP` (Yet Another Reverse Proxy) as a pure HTTP gateway + `ASP.NET Core` Web API with `Asp.Versioning` and `Scalar` interactive API docs.
+*   **Edge & Identity:** `NGINX` (TLS termination, header sanitization, per-client rate limiting) in front of the gateway; `Keycloak` (OAuth2/OIDC) with a dedicated gRPC token-validation service called by the gateway. See [`docs/api-gateway/README.md`](docs/api-gateway/README.md).
+*   **Load & Chaos Testing:** `k6` load scripts, `Toxiproxy` network fault injection and pod-kill scenarios with a consistency reconciliation. See [`docs/chaos-engineering/README.md`](docs/chaos-engineering/README.md).
 *   **Message Broker & Async Transport:** `Apache Kafka` + `MassTransit` (Kafka Rider, Saga State Machine, Courier Routing Slip, EF Core Transactional Outbox/Inbox).
 *   **Databases (OLTP):** `PostgreSQL` (isolated database per service) + `Redis` (distributed locks via `RedLock.net`).
 *   **Reliability:** Declarative compliance rules via `RulesEngine` (JSON-configured, hot-swappable without code changes).
@@ -148,6 +151,7 @@ docker compose up -d --build
 ```
 Follow [`docs/business-logic/validation-guide.md`](docs/business-logic/validation-guide.md) for a full black-box
 walkthrough (seed accounts → run a transaction → verify the saga, observability stack, and analytics pipeline).
+Requests through the gateway require a Keycloak bearer token (how to obtain one: [`docs/api-gateway/README.md`](docs/api-gateway/README.md)). A complete guide to starting, testing and stress-testing the platform: [`docs/running-and-testing.md`](docs/running-and-testing.md).
 
 ### Kubernetes (additional, fully equivalent path)
 ```bash

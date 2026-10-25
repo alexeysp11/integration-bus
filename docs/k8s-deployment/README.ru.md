@@ -59,7 +59,7 @@ for img in integration-bus-integration-bus-gateway-api \
            integration-bus-integration-bus-account-balance-service \
            integration-bus-integration-bus-compliance-service \
            integration-bus-integration-bus-core-ledger-service \
-           integration-bus-integration-bus-kafka-connect; do
+           integration-bus-integration-bus-identity-service \n           integration-bus-integration-bus-kafka-connect; do
   kind load docker-image "$img:latest" --name integration-bus
 done
 
@@ -101,6 +101,10 @@ image store Docker Desktop (см. §4.4) — для наших 7 самосбо�
 | Redis Commander | 8082 | **18082** |
 | Metabase | 3001 | **13001** |
 | Kafka Connect REST | 8083 | **18083** |
+| NGINX edge (HTTPS) | 8443 | **18443** |
+| Keycloak | 8180 | **18180** |
+| Identity.Service gRPC / health | 6005 / 6006 | **16005** / **16006** |
+| Toxiproxy API (only with `chaos.toxiproxy.enabled=true`) | 8474 | **18474** |
 
 ---
 
@@ -238,3 +242,15 @@ helm uninstall integration-bus -n integration-bus
 kubectl delete namespace integration-bus   # также удаляет все PVC
 kind delete cluster --name integration-bus # полностью снести кластер
 ```
+
+---
+
+## 8. Реплики, edge-слой и идентификация
+
+| Компонент | Значения чарта | Примечания |
+| :--- | :--- | :--- |
+| Реплики воркеров | `services.<name>.replicas` (баланс 3, оркестратор/compliance/ledger 2) | Для каждого workload также создаётся headless-сервис `integration-bus-<name>-pods`, который Prometheus разворачивает в по одному адресу на под. |
+| Партиции Kafka | `kafka.topicPartitions` (12) | Используется Job-провижонером топиков; см. [`docs/scaling/kafka-partition-keys.ru.md`](../scaling/kafka-partition-keys.ru.md). |
+| NGINX edge | `nginx.*` | TLS, очистка заголовков и rate limiting перед `Gateway.Api`; самоподписанный сертификат генерирует Helm в Secret `integration-bus-nginx-tls`. |
+| Keycloak и Identity.Service | `keycloak.*`, `services.identity-service` | `keycloak.hostname` — URL издателя, который видят клиенты (`http://localhost:18180` в Kind). Подробности: [`docs/api-gateway/README.ru.md`](../api-gateway/README.ru.md). |
+| Toxiproxy | `chaos.toxiproxy.*` | По умолчанию выключен; при включении все сервисы ходят в Redis через прокси. См. [`docs/chaos-engineering/README.ru.md`](../chaos-engineering/README.ru.md). |

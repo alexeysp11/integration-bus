@@ -1,0 +1,42 @@
+{
+  "realm": "integration-bus",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "ledger-user", "description": "May call the ledger and accounts APIs" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "integration-bus-client",
+      "name": "integration-bus API client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "integration-bus-client-secret",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "demo-user",
+      "enabled": true,
+      "email": "demo-user@example.com",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "User",
+      "credentials": [ { "type": "password", "value": "demo-password", "temporary": false } ],
+      "realmRoles": [ "ledger-user" ]
+    },
+    {
+      "username": "service-account-integration-bus-client",
+      "enabled": true,
+      "serviceAccountClientId": "integration-bus-client",
+      "realmRoles": [ "ledger-user" ]
+    }
+  ]
+}

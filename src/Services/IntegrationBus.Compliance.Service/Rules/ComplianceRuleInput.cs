@@ -1,7 +1,7 @@
 namespace IntegrationBus.Compliance.Service.Rules;
 
 /// <summary>
-/// Flattened, rule-engine-facing projection of a <see cref="IntegrationBus.Compliance.Contracts.Messages.Commands.CheckComplianceLimits"/> command.
+/// Flattened, rule-engine-facing projection of a <see cref="Contracts.Messages.Commands.CheckComplianceLimits"/> command.
 /// </summary>
 public sealed record ComplianceRuleInput
 {

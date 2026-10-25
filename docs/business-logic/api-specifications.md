@@ -114,9 +114,13 @@ A validation failure returns `HTTP 400` with a flat body:
 
 ## 5. Manual Testing via cURL
 
+Requests through the gateway require a bearer token; see [`docs/api-gateway/README.md`](../api-gateway/README.md)
+for how to obtain `$TOKEN`.
+
 ```bash
 # Dispatch a valid transaction
 curl -X POST http://localhost:5038/api/v1/ledger/transaction \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "sourceAccountId": "a2222222-3333-4444-5555-999999999999",
@@ -127,6 +131,7 @@ curl -X POST http://localhost:5038/api/v1/ledger/transaction \
 
 # Trigger a validation failure (same source/target account)
 curl -X POST http://localhost:5038/api/v1/ledger/transaction \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "sourceAccountId": "a2222222-3333-4444-5555-999999999999",

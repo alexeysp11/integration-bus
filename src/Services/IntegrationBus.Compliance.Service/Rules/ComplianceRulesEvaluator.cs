@@ -7,7 +7,7 @@ namespace IntegrationBus.Compliance.Service.Rules;
 
 /// <summary>
 /// Loads the <c>TransactionComplianceWorkflow</c> definition from a local JSON file once at startup and evaluates
-/// every incoming transaction against it via <see cref="global::RulesEngine.RulesEngine"/>, replacing what used to be
+/// every incoming transaction against it via <see cref="RulesEngine.RulesEngine"/>, replacing what used to be
 /// a hardcoded always-pass compliance check with an externally configurable, auditable rule set.
 /// </summary>
 public sealed class ComplianceRulesEvaluator : IComplianceRulesEvaluator
@@ -20,7 +20,7 @@ public sealed class ComplianceRulesEvaluator : IComplianceRulesEvaluator
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private readonly global::RulesEngine.RulesEngine _rulesEngine;
+    private readonly RulesEngine.RulesEngine _rulesEngine;
 
     public ComplianceRulesEvaluator(IOptions<ComplianceRulesOptions> options, ILogger<ComplianceRulesEvaluator> logger)
     {
@@ -33,7 +33,7 @@ public sealed class ComplianceRulesEvaluator : IComplianceRulesEvaluator
         Workflow[] workflows = JsonSerializer.Deserialize<List<Workflow>>(rulesJson, RulesFileSerializerOptions)?.ToArray()
             ?? throw new InvalidOperationException($"Compliance rules file at '{rulesFilePath}' did not contain a valid workflow definition.");
 
-        _rulesEngine = new global::RulesEngine.RulesEngine(workflows);
+        _rulesEngine = new RulesEngine.RulesEngine(workflows);
 
         logger.LogInformation(
             "Loaded compliance rule workflow '{WorkflowName}' with {RuleCount} rule(s) from {RulesFilePath}",

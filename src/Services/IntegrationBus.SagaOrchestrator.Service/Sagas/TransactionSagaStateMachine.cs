@@ -107,6 +107,39 @@ public sealed class TransactionSagaStateMachine : MassTransitStateMachine<Transa
                 })
                 .Activity(x => x.OfType<ReleaseAccountBalanceActivity>())
                 .TransitionTo(Failed));
+
+        // Kafka delivers at-least-once and routing is keyed per transaction, so a redelivered or late event can reach a
+        // saga that already left the step it belongs to; such duplicates are dropped instead of faulting the consumer.
+        During(AwaitingAccountBalanceHold,
+            Ignore(StartTransactionSaga),
+            Ignore(CheckComplianceLimitsPassed), Ignore(CheckComplianceLimitsFailed),
+            Ignore(WriteLedgerRecordPassed), Ignore(WriteLedgerRecordFailed),
+            Ignore(ConfirmAccountBalancePassed), Ignore(ConfirmAccountBalanceFailed));
+
+        During(AwaitingComplianceLimitsCheck,
+            Ignore(StartTransactionSaga),
+            Ignore(HoldAccountBalancePassed), Ignore(HoldAccountBalanceFailed),
+            Ignore(WriteLedgerRecordPassed), Ignore(WriteLedgerRecordFailed),
+            Ignore(ConfirmAccountBalancePassed), Ignore(ConfirmAccountBalanceFailed));
+
+        During(AwaitingLedgerCommit,
+            Ignore(StartTransactionSaga),
+            Ignore(HoldAccountBalancePassed), Ignore(HoldAccountBalanceFailed),
+            Ignore(CheckComplianceLimitsPassed), Ignore(CheckComplianceLimitsFailed),
+            Ignore(ConfirmAccountBalancePassed), Ignore(ConfirmAccountBalanceFailed));
+
+        During(AwaitingAccountingCommit,
+            Ignore(StartTransactionSaga),
+            Ignore(HoldAccountBalancePassed), Ignore(HoldAccountBalanceFailed),
+            Ignore(CheckComplianceLimitsPassed), Ignore(CheckComplianceLimitsFailed),
+            Ignore(WriteLedgerRecordPassed), Ignore(WriteLedgerRecordFailed));
+
+        During(Completed, Failed,
+            Ignore(StartTransactionSaga),
+            Ignore(HoldAccountBalancePassed), Ignore(HoldAccountBalanceFailed),
+            Ignore(CheckComplianceLimitsPassed), Ignore(CheckComplianceLimitsFailed),
+            Ignore(WriteLedgerRecordPassed), Ignore(WriteLedgerRecordFailed),
+            Ignore(ConfirmAccountBalancePassed), Ignore(ConfirmAccountBalanceFailed));
     }
 
     /// <summary>

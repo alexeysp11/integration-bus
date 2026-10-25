@@ -264,48 +264,49 @@ This document outlines the complete iterative implementation plan for the `integ
 ## 🌋 Stage 6: High-Load Simulation & Chaos Engineering
 
 ### 📌 High-Load Optimization: Horizontal Scaling & Kafka Partition Key Routing
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Pending ⏳`** _(implemented and covered by automated tests; awaiting the live verification described in [`docs/running-and-testing.md`](running-and-testing.md))_
 *   **Git Branch:** `feature/distributed-scaling-concurrency`
 *   **Description:** Prepare the platform layout for multi-instance horizontal scaling. Configure implicit Kafka message partition keys to guarantee that messages belonging to identical account identifiers always land within the same partition, ensuring strict message ordering across concurrent consumer clusters.
 *   **Todo List:**
-    - [ ] Refactor MassTransit producers and Kafka Riders to explicitly map `AccountId` or `TransactionId` as the Kafka message Partition Key.
-    - [ ] Scale worker services to multiple instances inside `docker-compose.yml` (e.g., `replicas: 3` for Accounting Service) to model a true distributed microservice cluster.
+    - [x] Refactor MassTransit producers and Kafka Riders to explicitly map `AccountId` or `TransactionId` as the Kafka message Partition Key. _(`AddPartitionKeyedProducer<T>`, see [`docs/scaling/kafka-partition-keys.md`](scaling/kafka-partition-keys.md).)_
+    - [x] Scale worker services to multiple instances inside `docker-compose.yml` (e.g., `replicas: 3` for Accounting Service) to model a true distributed microservice cluster. _(`AccountBalance` x3, orchestrator/compliance/ledger x2, 12 partitions per topic; the Helm chart exposes the same through `services.<name>.replicas`.)_
 *   **Definition of Done:**
-    - Active message streams are distributed across distinct service replicas based on partition key hashing.
-    - Concurrent multi-replica transaction benchmarks demonstrate strict message execution ordering per individual financial account context.
+    - Active message streams are distributed across distinct service replicas based on partition key hashing. _(Automated: `KafkaPartitionKeyRoutingTests` against a real Kafka broker. Live: Kafka UI consumer groups, see the running guide.)_
+    - Concurrent multi-replica transaction benchmarks demonstrate strict message execution ordering per individual financial account context. _(Automated: two consumers in one group process every account on exactly one replica in production order. Live: `run-chaos.sh baseline`.)_
 
 ### 📌 Chaos Engineering and Load Testing with k6
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Pending ⏳`** _(harness implemented; the scenarios have not been executed yet, see [`docs/running-and-testing.md`](running-and-testing.md))_
 *   **Git Branch:** `test/chaos-engineering`
 *   **Description:** Execute the ultimate architectural validation. Bombard the Kubernetes cluster with heavy load and simulate infrastructure crash scenarios to prove system-wide data consistency.
 *   **Todo List:**
-    - [ ] Write a javascript load testing script using `k6` to simulate thousands of continuous ledger transactions.
-    - [ ] Trigger an abrupt pod eviction (`kubectl delete pod`) of a processing node mid-flight during the test.
-    - [ ] Inject network delays between applications and Redis to simulate split-brain conditions.
+    - [x] Write a javascript load testing script using `k6` to simulate thousands of continuous ledger transactions. _(`tests/chaos/k6/ledger-load.js`.)_
+    - [x] Trigger an abrupt pod eviction (`kubectl delete pod`) of a processing node mid-flight during the test. _(Scenarios `kill-balance`, `kill-ledger`, `kill-orchestrator`; both Compose and Kubernetes backends.)_
+    - [x] Inject network delays between applications and Redis to simulate split-brain conditions. _(Toxiproxy scenarios `redis-latency` and `redis-blackhole`.)_
+    - [x] _(Defects fixed while preparing the scenarios)_ Idempotent ledger write with a unique index and a real compensation, routing slip tracking that keeps the Kafka offset uncommitted until the slip finishes, PostgreSQL advisory locks for every journal writer, and duplicate-event handling in the saga. See [`docs/chaos-engineering/README.md`](chaos-engineering/README.md).
 *   **Definition of Done:**
-    - The system achieves Exactly-Once processing guarantees.
-    - Zero financial records are dropped or corrupted, and MassTransit successfully tracks or compensates interrupted routing slips.
+    - The system achieves Exactly-Once processing guarantees. _(Checked by `reconcile.sh` after every scenario.)_
+    - Zero financial records are dropped or corrupted, and MassTransit successfully tracks or compensates interrupted routing slips. _(Same invariants; the routing slip behavior is covered by unit and integration tests.)_
 
 ---
 
 ## 🛡️ Stage 7: API Gateway Hardening & Identity
 
 ### 📌 NGINX Ingress & Rate Limiting
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Pending ⏳`** _(implemented; the NGINX configuration passes `nginx -t`, the Helm chart passes `helm lint`; live verification pending)_
 *   **Git Branch:** `feature/nginx-rate-limiting`
 *   **Description:** Place an `NGINX` layer in front of `Gateway.Api` to terminate TLS, sanitize headers, and enforce per-client rate limiting before traffic reaches the YARP proxy layer.
 *   **Todo List:**
-    - [ ] Add an `NGINX` reverse proxy container (or Ingress Controller, for the Kubernetes deployment path) in front of `Gateway.Api`.
-    - [ ] Configure TLS termination and per-client/per-route rate limiting rules.
+    - [x] Add an `NGINX` reverse proxy container (or Ingress Controller, for the Kubernetes deployment path) in front of `Gateway.Api`. _(Compose service `integration-bus-nginx`; Helm Deployment with the identical `nginx.conf`.)_
+    - [x] Configure TLS termination and per-client/per-route rate limiting rules. _(See [`docs/api-gateway/README.md`](api-gateway/README.md).)_
 *   **Definition of Done:**
     - Requests exceeding the configured rate limit receive `HTTP 429 Too Many Requests` before reaching `Gateway.Api`.
 
 ### 📌 Keycloak OIDC Authentication & gRPC Token Validation
-*   **Status:** **`Pending ⏳`**
+*   **Status:** **`Pending ⏳`** _(implemented and covered by 15 automated tests; live verification against Keycloak pending)_
 *   **Git Branch:** `feature/keycloak-oidc-auth`
 *   **Description:** Introduce a `Keycloak` identity provider (OAuth2/OIDC) and validate inbound bearer tokens at the gateway layer via a dedicated gRPC validation service, so downstream services never need to implement authentication themselves.
 *   **Todo List:**
-    - [ ] Provision a `Keycloak` instance and define a realm/client for the platform.
-    - [ ] Add a gRPC token-validation service and call it from `Gateway.Api` before proxying any request.
+    - [x] Provision a `Keycloak` instance and define a realm/client for the platform. _(`infrastructure/keycloak/integration-bus-realm.json`.)_
+    - [x] Add a gRPC token-validation service and call it from `Gateway.Api` before proxying any request. _(`IntegrationBus.Identity.Service`, `TokenValidationMiddleware`.)_
 *   **Definition of Done:**
     - Requests without a valid Keycloak-issued token are rejected at the gateway with `HTTP 401 Unauthorized`, before reaching `Processing.Api`.

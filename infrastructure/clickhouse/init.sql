@@ -81,5 +81,6 @@ SELECT
     l.CreatedAt AS LedgerCommittedAt
 FROM analytics.journal_entries AS j
 LEFT JOIN analytics.compliance_audits AS c ON c.TransactionId = j.TransactionId
-LEFT JOIN analytics.ledger_entries AS l ON l.TransactionId = j.TransactionId
+-- FINAL collapses insert/delete versions of an entry; a compensated (deleted) ledger entry is excluded
+LEFT JOIN (SELECT * FROM analytics.ledger_entries FINAL WHERE __deleted = 'false') AS l ON l.TransactionId = j.TransactionId
 WHERE j.EntryType = 1; -- JournalEntryType.Hold: one row per originating transaction

@@ -46,3 +46,21 @@ nodes:
       - containerPort: 30083 # Kafka Connect REST       (compose: 8083)
         hostPort: 18083
         protocol: TCP
+      - containerPort: 30443 # NGINX edge (HTTPS)       (compose: 8443)
+        hostPort: 18443
+        protocol: TCP
+      - containerPort: 30088 # NGINX edge (probe only)  (compose: 8088)
+        hostPort: 18088
+        protocol: TCP
+      - containerPort: 30180 # Keycloak                 (compose: 8180)
+        hostPort: 18180
+        protocol: TCP
+      - containerPort: 30065 # Identity gRPC            (compose: 6005)
+        hostPort: 16005
+        protocol: TCP
+      - containerPort: 30066 # Identity /health         (compose: 6006)
+        hostPort: 16006
+        protocol: TCP
+      - containerPort: 30474 # Toxiproxy API (chaos)    (compose: 8474)
+        hostPort: 18474
+        protocol: TCP

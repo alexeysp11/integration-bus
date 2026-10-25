@@ -5,6 +5,7 @@ using IntegrationBus.AccountBalance.Contracts.Messages.Events;
 using IntegrationBus.AccountBalance.Service.DbContexts;
 using IntegrationBus.AccountBalance.Service.Entities;
 using IntegrationBus.AccountBalance.Service.Enums;
+using IntegrationBus.AccountBalance.Service.Providers;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -72,6 +73,9 @@ public sealed class ReleaseAccountBalanceConsumer(
 
         try
         {
+            // Serialize duplicate deliveries of this transaction before the idempotency check
+            await AccountAdvisoryLock.AcquireTransactionAsync(connection, transaction, message.TransactionId, context.CancellationToken);
+
             // 1. Locate the active historical hold to identify the original source account context boundaries
             (Guid SourceAccountId, Guid? TargetAccountId, decimal AmountDelta)? holdEntry = await connection.QuerySingleOrDefaultAsync<(Guid SourceAccountId, Guid? TargetAccountId, decimal AmountDelta)?>(
                 FindHoldEntrySql, new { message.TransactionId, HoldType = (int)JournalEntryType.Hold }, transaction);
@@ -116,6 +120,7 @@ public sealed class ReleaseAccountBalanceConsumer(
             }
 
             Guid sourceAccountId = holdEntry.Value.SourceAccountId;
+            await AccountAdvisoryLock.AcquireAccountsAsync(connection, transaction, [sourceAccountId], context.CancellationToken);
             decimal absoluteHoldAmount = Math.Abs(holdEntry.Value.AmountDelta);
 
             // 2. Determine the next sequential index execution step for the source account stream log

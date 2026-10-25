@@ -6,6 +6,7 @@ namespace IntegrationBus.CoreLedger.Service.Consumers;
 
 public sealed class LedgerRoutingSlipEventConsumer(
     ILogger<LedgerRoutingSlipEventConsumer> logger,
+    LedgerRoutingSlipCompletionRegistry completionRegistry,
     ITopicProducer<WriteLedgerRecordPassed> passedProducer,
     ITopicProducer<WriteLedgerRecordFailed> failedProducer) :
     IConsumer<RoutingSlipCompleted>,
@@ -28,6 +29,9 @@ public sealed class LedgerRoutingSlipEventConsumer(
                 EntryId = technicalEntryId,
                 CreatedAt = DateTime.UtcNow
             }, context.CancellationToken);
+
+            // Release the waiting Kafka consumer only after the outcome event has been published
+            completionRegistry.Complete(context.Message.TrackingNumber);
         }
         else
         {
@@ -50,6 +54,8 @@ public sealed class LedgerRoutingSlipEventConsumer(
                 Reason = "Technical ledger execution pipeline failed inside the local memory boundary.",
                 FailedAt = DateTime.UtcNow
             }, context.CancellationToken);
+
+            completionRegistry.Complete(context.Message.TrackingNumber);
         }
         else
         {

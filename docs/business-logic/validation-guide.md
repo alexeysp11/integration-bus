@@ -26,10 +26,11 @@ Check the health endpoints of all six .NET services (each should return `200 OK`
 ```bash
 curl -s -o /dev/null -w "Gateway: %{http_code}\n"            http://localhost:5038/health
 curl -s -o /dev/null -w "Processing.Api: %{http_code}\n"     http://localhost:5201/health
-curl -s -o /dev/null -w "SagaOrchestrator: %{http_code}\n"   http://localhost:6001/health
-curl -s -o /dev/null -w "AccountBalance: %{http_code}\n"     http://localhost:6002/health
-curl -s -o /dev/null -w "Compliance: %{http_code}\n"         http://localhost:6003/health
-curl -s -o /dev/null -w "CoreLedger: %{http_code}\n"         http://localhost:6004/health
+for port in $(seq 6010 6049); do
+  code=$(curl -s -m 1 -o /dev/null -w "%{http_code}" "http://localhost:$port/health")
+  [ "$code" != "000" ] && echo "worker replica on port $port: $code"
+done
+curl -s -o /dev/null -w "Identity: %{http_code}\n"           http://localhost:6006/health
 ```
 
 If any service is still `Unhealthy` — wait 10–20 seconds (database migrations and Kafka topic provisioning run on
@@ -44,11 +45,21 @@ curl -s "http://localhost:8083/connectors?expand=status"
 
 ## Step 2. Prepare Test Accounts
 
+Every request through the gateway requires a Keycloak bearer token
+(see [`docs/api-gateway/README.md`](../api-gateway/README.md)). Obtain one first:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/integration-bus/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=integration-bus-client \
+  -d client_secret=integration-bus-client-secret | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+```
+
 The system has no separate public "create one account" endpoint — accounts are only created via bulk seeding.
 Let's create 5 test accounts in USD and grab two real `Id`s from the database:
 
 ```bash
 curl -s -X POST http://localhost:5038/api/v1/accounts/seed \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"count": 5, "currency": 1}'
 # -> 202 Accepted
@@ -64,6 +75,7 @@ enough to transfer (freshly seeded accounts have a balance of 0):
 
 ```bash
 curl -s -X POST "http://localhost:5038/api/v1/accounts/$SOURCE_ID/topup" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"amount": 1000.00, "currency": 1}'
 # -> 202 Accepted {"message":"Top-up request accepted...","trackingTransactionId":"..."}
@@ -80,6 +92,7 @@ sleep 2
 
 ```bash
 curl -s -X POST http://localhost:5038/api/v1/ledger/transaction \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"sourceAccountId\": \"$SOURCE_ID\",

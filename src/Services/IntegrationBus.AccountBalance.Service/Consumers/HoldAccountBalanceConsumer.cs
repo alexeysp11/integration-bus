@@ -17,10 +17,7 @@ namespace IntegrationBus.AccountBalance.Service.Consumers;
 /// Processes account balance reservation commands inside a transactional database boundary.
 /// </summary>
 /// <remarks>
-/// A Redis distributed lock keyed by the source account id serializes concurrent holds against the same account
-/// across all replicas of this service, closing the read-balance/insert-hold TOCTOU race that a database transaction
-/// alone (default Read Committed isolation) does not prevent. A duplicate <see cref="HoldAccountBalance"/> delivery
-/// for a <c>TransactionId</c> that was already held is detected and replayed idempotently instead of double-debiting.
+/// Concurrency and idempotency design: <c>docs/reliability/README.md</c> (relative to the repository root).
 /// </remarks>
 public sealed class HoldAccountBalanceConsumer(
     ILogger<HoldAccountBalanceConsumer> logger,
@@ -103,6 +100,10 @@ public sealed class HoldAccountBalanceConsumer(
 
         try
         {
+            // Serialize with every other writer of this account and with duplicate deliveries of this transaction
+            await AccountAdvisoryLock.AcquireTransactionAsync(connection, transaction, message.TransactionId, context.CancellationToken);
+            await AccountAdvisoryLock.AcquireAccountsAsync(connection, transaction, [message.AccountFromId], context.CancellationToken);
+
             // Idempotency guard: a redelivered command for a TransactionId that already produced a hold entry
             // is replayed without appending a second ledger mutation, protecting against Kafka at-least-once duplicates
             bool alreadyHeld = await connection.ExecuteScalarAsync<int?>(

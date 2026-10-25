@@ -1,8 +1,7 @@
 # Running and Testing the Platform
 
 This guide takes you from a clean checkout to a fully verified stack: automated tests, the Docker Compose stack, the
-identity and edge layers (Stage 7), horizontal scaling, the chaos and load scenarios (Stage 6) and the Kubernetes
-deployment. Every section can be run independently.
+identity and edge layers, horizontal scaling, the chaos and load scenarios and the Kubernetes deployment. Every section can be run independently.
 
 ---
 
@@ -78,7 +77,7 @@ For the full end-to-end business scenario (accounts, transaction, saga, observab
 
 ---
 
-## 4. Stage 7: Edge, Identity and Tokens
+## 4. Edge, Identity and Tokens
 
 Obtain a token from Keycloak:
 
@@ -111,7 +110,7 @@ Design, configuration keys and troubleshooting: [`api-gateway/README.md`](api-ga
 
 ---
 
-## 5. Stage 6: Scaling and Partition Keys
+## 5. Scaling and Partition Keys
 
 Consumer groups must show several members, each owning a share of the 12 partitions:
 
@@ -133,7 +132,7 @@ Details: [`scaling/kafka-partition-keys.md`](scaling/kafka-partition-keys.md).
 
 ---
 
-## 6. Stage 6: Load and Chaos Scenarios
+## 6. Load and Chaos Scenarios
 
 Scenarios run through [`tests/chaos/scripts/run-chaos.sh`](../tests/chaos/scripts/run-chaos.sh): it prepares a pool of
 funded accounts, runs k6 from the `grafana/k6` image, injects the fault and then runs the reconciliation. The Redis
